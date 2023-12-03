@@ -1,0 +1,30 @@
+From cc37b38a348f2fe533e72d7f631879bdeeb2f295 Mon Sep 17 00:00:00 2001
+From: Thomas Dy <thatsmydoing@gmail.com>
+Date: Tue, 13 Jul 2021 12:35:46 +0900
+Subject: [PATCH 1/2] Cancel current postgres query on rollback
+
+If a postgres query inside a transaction is interrupted, the query keeps
+executing in the database but control flow is returned to ruby. When we
+attempt to rollback the transaction, it blocks until the previous query
+finishes.
+
+Since we're going to rollback anyway, we just cancel the previous query
+before issuing the rollback. Cancelling when no query is executing is
+just a no-op.
+---
+ .../connection_adapters/postgresql/database_statements.rb       | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/activerecord/lib/active_record/connection_adapters/postgresql/database_statements.rb b/activerecord/lib/active_record/connection_adapters/postgresql/database_statements.rb
+index 33010b0b92b77..d8965b101131b 100644
+--- a/activerecord/lib/active_record/connection_adapters/postgresql/database_statements.rb
++++ b/activerecord/lib/active_record/connection_adapters/postgresql/database_statements.rb
+@@ -119,6 +119,8 @@ def commit_db_transaction # :nodoc:
+ 
+         # Aborts a transaction.
+         def exec_rollback_db_transaction # :nodoc:
++          @connection.cancel unless @connection.transaction_status == PG::PQTRANS_IDLE
++          @connection.block
+           execute("ROLLBACK", "TRANSACTION")
+         end
+ 

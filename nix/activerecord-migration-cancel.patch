@@ -1,0 +1,18 @@
+diff --git a/activerecord/lib/active_record/migration.rb b/activerecord/lib/active_record/migration.rb
+index 0846f47d2e..0ac2fd45f1 100644
+--- a/activerecord/lib/active_record/migration.rb
++++ b/activerecord/lib/active_record/migration.rb
+@@ -1379,7 +1379,12 @@ def ddl_transaction(migration)
+         if use_transaction?(migration)
+           Base.transaction { yield }
+         else
+-          yield
++          begin
++            yield
++          ensure
++            pg_connection = ActiveRecord::Base.connection.raw_connection
++            pg_connection.cancel unless pg_connection.transaction_status == PG::PQTRANS_IDLE
++          end
+         end
+       end
+ 
