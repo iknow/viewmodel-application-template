@@ -1,0 +1,5 @@
+# honeybadger picks up api_key and env from environment variables / Rails.env
+# set revision if COMMIT is present (injected into images)
+<% if ENV.include?("COMMIT") %>
+revision: <%= ENV["COMMIT"] %>
+<% end %>

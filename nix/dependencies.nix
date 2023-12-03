@@ -54,6 +54,7 @@ rec {
   });
 
   postgresql = pkgs.postgresql_14;
+  opensearch = pkgs.opensearch;
 
   psql = stdenv.mkDerivation {
     pname = "psql";

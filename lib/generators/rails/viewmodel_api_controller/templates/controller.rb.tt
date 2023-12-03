@@ -1,0 +1,6 @@
+# frozen_string_literal: true
+
+class Api::<%= controller_class_name %>Controller < Api::ViewModelController
+  self.viewmodel_class = <%= class_name %>View
+  self.access_control = ViewModel::AccessControl::ReadOnly
+end

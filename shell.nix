@@ -4,7 +4,7 @@
 with pkgs;
 
 let
-  moergo_web = import ./default.nix { inherit pkgs; };
+  demoapp = import ./default.nix { inherit pkgs; };
 in
 
 stdenvNoCC.mkDerivation {
@@ -12,12 +12,12 @@ stdenvNoCC.mkDerivation {
 
   buildInputs = [
     bashInteractive gnutar
-    moergo_web.bundleLock
-    moergo_web.bundleEnv
-    moergo_web.bundleEnv.wrappedRuby
-  ] ++ moergo_web.developmentDependencies;
+    demoapp.bundleLock
+    demoapp.bundleEnv
+    demoapp.bundleEnv.wrappedRuby
+  ] ++ demoapp.developmentDependencies;
 
-  MOERGO_WEB_BUNDLE_ENV_PATH = moergo_web.bundleEnv;
+  DEMOAPP_BUNDLE_ENV_PATH = demoapp.bundleEnv;
 
   src = lib.sourceByRegex ./. ["^Gemfile$" "^Gemfile\.lock$" "^gemset\.nix$"];
 }

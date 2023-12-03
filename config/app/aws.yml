@@ -1,0 +1,18 @@
+---
+development: &development
+  default_region:    ap-northeast-1
+  access_key_id:     SET YOUR DEVELOPMENT ACCESS KEY HERE
+  secret_access_key: SET YOUR DEVELOPMENT SECRET ACCESS KEY HERE
+  inbox_bucket_name: demoapp-inbox-dev
+
+test: *development
+
+production: &production
+  default_region:    ap-northeast-1
+  access_key_id:     <%= ENV['AWS_ACCESS_KEY_ID'] %>
+  secret_access_key: <%= ENV['AWS_SECRET_ACCESS_KEY'] %>
+  inbox_bucket_name: demoapp-inbox
+
+staging:
+  <<: *production
+  inbox_bucket_name: demoapp-inbox-testing

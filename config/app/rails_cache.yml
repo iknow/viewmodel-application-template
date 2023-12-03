@@ -1,0 +1,13 @@
+development:
+  store_type: mem_cache
+  clear_on_startup: true
+
+test:
+  store_type: memory
+  clear_on_startup: false
+
+production: &production
+  store_type: mem_cache
+  clear_on_startup: false
+
+staging: *production

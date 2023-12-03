@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 source 'https://rubygems.org'
 git_source(:github) { |repo| 'https://github.com/#{repo}.git' }
 
@@ -50,11 +52,38 @@ gem 'rack-attack'
 # For cleaner production logs
 gem 'lograge'
 
+# Honeybadger for error reporting
+gem 'honeybadger'
+
+# Memcache and Redis
+gem 'dalli'
+gem 'redis', '~> 4.0'
+
+# Elasticsearch
+gem 'chewy'
+gem 'elasticsearch', '~> 7.13.0'
+gem 'faraday_middleware-aws-sigv4'
+
+# Postgres-based ActiveJob backend
+gem 'good_job'
+
+# HTTP library used by elasticsearch-ruby
+gem 'typhoeus'
+
+# AWS SDK access
+gem 'aws-sdk-s3'
+
 # Faster JSON library
 gem 'oj'
 
 # Enumerated types
 gem 'renum'
+
+# re-encode binary strings using arbitrary symbolic bases
+gem 'base_x'
+
+# Parser combinator library
+gem 'raabro'
 
 # Use factory_bot for generating content in tests
 gem 'factory_bot', require: false
@@ -71,18 +100,14 @@ gem 'loadable_config',     '~> 1.0.3'
 gem 'persistent_enum',     '~> 1.2.6'
 gem 'safe_values',         '~> 1.0.2'
 
-
 group :development, :test do
-  # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
-  gem 'debug', platforms: %i[ mri mingw x64_mingw ]
-
+  gem 'debug'
+  gem 'fuubar'
   gem 'rspec-rails'
-
-  # rubocop 1.38.0 has a bug that causes Style/RedundantEach to crash.
-  # https://github.com/rubocop/rubocop/pull/11142
-  gem 'rubocop',       '!= 1.38.0'
-  gem 'rubocop-rails'
+  gem 'rubocop'
   gem 'rubocop-iknow', '>= 0.0.12'
+  gem 'rubocop-rails'
+  gem 'webmock'
 end
 
 group :development do
@@ -95,7 +120,7 @@ group :development do
   # Speed up commands on slow machines / big apps [https://github.com/rails/spring]
   # gem 'spring'
 
-  gem 'solargraph', '>= 0.39'
-  gem 'ruby-lsp', require: false
   gem 'annotate'
+  gem 'ruby-lsp', require: false
+  gem 'solargraph', '>= 0.39'
 end

@@ -1,0 +1,20 @@
+<% cfg = ServiceConfigHelper.new("memcached") %>
+
+defaults: &defaults
+  expires_in: null
+  namespace: eikaiwa_content
+  compress: true
+  failover: false
+  servers: <%= cfg.fetch('MEMCACHED_SERVERS', '["localhost:11211"]') %>
+
+development:
+  <<: *defaults
+
+test:
+  <<: *defaults
+
+production: &production
+  <<: *defaults
+  servers: <%= ENV['MEMCACHED_SERVERS'] %>
+
+staging: *production

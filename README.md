@@ -1,24 +1,10 @@
 # README
 
-This README would normally document whatever steps are necessary to get the
-application up and running.
+This extracted skeleton template provides a starting point for developing a
+Replace-like ViewModels API Rails application.
 
-Things you may want to cover:
-
-* Ruby version
-
-* System dependencies
-
-* Configuration
-
-* Database creation
-
-* Database initialization
-
-* How to run the test suite
-
-* Services (job queues, cache servers, search engines, etc.)
-
-* Deployment instructions
-
-* ...
+It also serves as a guide for what parts of the Replace application itself
+should be abstracted and extracted into shared library code before we want to
+maintain more than one application based on it. The majority of the code in this
+repository is general-purpose, and could be migrated either to the
+`iknow_view_models` gem itself or to a new `replace-common` library.

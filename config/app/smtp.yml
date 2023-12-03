@@ -1,0 +1,21 @@
+development: &development
+  perform_deliveries: <%= ActiveModel::Type::Boolean.new.cast(ENV.fetch('LOCAL_SMTP', false)) %>
+  host: localhost
+  port: 1025
+  enable_starttls_auto: false
+
+test: *development
+
+production: &production
+  host: <%= ENV['SMTP_HOST'] %>
+  port: <%= ENV['SMTP_PORT'] %>
+  username: <%= ENV['SMTP_USERNAME'] %>
+  password: <%= ENV['SMTP_PASSWORD'] %>
+  authentication: login
+  ses_configuration_set: demoapp
+  ses_bounce_topics: []
+
+staging:
+  <<: *production
+  ses_configuration_set: demoapp-staging
+  ses_bounce_topics: []

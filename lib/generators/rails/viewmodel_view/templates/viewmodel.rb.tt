@@ -1,0 +1,13 @@
+# frozen_string_literal: true
+
+class <%= class_name %>View < ApplicationView
+  self.schema_version = 1
+
+  attributes <%= vm_attribute_names.join(", ") %>
+  <%- unless vm_association_names.empty? -%>
+
+  <%- end -%>
+  <%- vm_association_names.each do |a| -%>
+  association <%= a %>
+  <%- end -%>
+end

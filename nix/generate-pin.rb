@@ -9,12 +9,14 @@ def get_channel_url(channel)
   uri = URI("https://channels.nixos.org/#{channel}")
   res = Net::HTTP.get_response(uri)
   raise 'Not a redirect' unless res.is_a?(Net::HTTPRedirection)
+
   res['location']
 end
 
 def fetch_tarball(url)
   hash = `nix-prefetch-url --unpack #{Shellwords.escape(url)}`
   raise 'Prefetch failed' unless $?.success?
+
   hash.chomp
 end
 

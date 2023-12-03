@@ -1,0 +1,17 @@
+---
+<% cfg = ServiceConfigHelper.new('redis') %>
+
+development: &development
+  redis_url: <%= cfg.fetch('REDIS_URL', 'redis://127.0.0.1:6379') %>
+  reconnect_attempts: 5
+  reconnect_delay: 0.2
+  prefix: "demoapp:"
+
+test: *development
+
+production: &production
+  <<: *development
+  redis_url: <%= ENV['REDIS_URL'] %>
+
+staging:
+  <<: *production

@@ -1,0 +1,27 @@
+<% cfg = ServiceConfigHelper.new("opensearch") %>
+
+development: &defaults
+  host: <%= cfg.fetch('OPENSEARCH_HOST', 'localhost:9200') %>
+  connect_timeout: 0.5 # seconds
+  request_timeout: <%= ENV.fetch("OPENSEARCH_TIMEOUT", "5") %> # seconds
+  use_aws_authentication: <%= ENV.fetch('OPENSEARCH_USE_AWS_AUTH', 'false') %>
+  journal: true
+
+test:
+  <<: *defaults
+  host: '<%= ENV.fetch("OPENSEARCH_HOST", "localhost:9200") %>'
+  prefix: test<%= ENV['TEST_ENV_NUMBER'] %>
+  bulk_size: 104857600 # 100MB
+  journal: false
+
+production: &production
+  <<: *defaults
+  host: '<%= ENV["OPENSEARCH_HOST"] %>'
+  use_aws_authentication: <%= ENV["OPENSEARCH_USE_AWS_AUTH"] %>
+  bulk_size: 10485760 # 10MB
+
+staging:
+  <<: *defaults
+  host: '<%= ENV["OPENSEARCH_HOST"] %>'
+  use_aws_authentication: <%= ENV["OPENSEARCH_USE_AWS_AUTH"] %>
+  prefix: 'branch_<%= ENV["OPENSEARCH_PREFIX"] %>'

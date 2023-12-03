@@ -1,0 +1,25 @@
+# frozen_string_literal: true
+
+require 'rails_helper'
+
+RSpec.describe 'Api::<%= controller_class_name %>Controller', type: :request do
+  let_factory(:<%= factory_name %>)
+
+  describe 'GET /<%= fetch_all_url %>' do
+    let(:request_method) { :get }
+    let(:request_url) { <%= fetch_all_route_helper %> }
+
+    let(:expected_result) { all(be_a_viewmodel_response_of(<%= view_name %>)) }
+
+    it_behaves_like 'responds successfully with result'
+  end
+
+  describe 'GET /<%= fetch_one_url %>' do
+    let(:request_method) { :get }
+    let(:request_url) { <%= fetch_one_route_helper %>(id: <%= factory_name %>.id) }
+
+    let(:expected_result) { be_a_viewmodel_response_of(<%= view_name %>) }
+
+    it_behaves_like 'responds successfully with result'
+  end
+end

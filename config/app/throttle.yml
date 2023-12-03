@@ -1,0 +1,74 @@
+---
+production: &production
+  dry_run: false
+  whitelist:
+    path:
+      # these are expected to be hit relatively frequently but are low cost / well cached
+      - "^/api/presence$"
+    uid: []
+    ip:
+      # private addresses
+      - 192.168.0.0/16
+      - 172.16.0.0/12
+      - 10.0.0.0/8
+    token_type:
+      - machine
+
+  # Limit per uid & IP
+  authenticated:
+    enabled: true
+    period: 60 # seconds
+    max_requests: 240
+    max_db_runtime: 40 # seconds
+    max_runtime: 60 # seconds
+
+  # Limit per IP
+  unauthenticated:
+    enabled: true
+    period: 60 # seconds
+    max_requests: 240
+    max_db_runtime: 30 # seconds
+    max_runtime: 40 # seconds
+
+  custom_rulesets: {}
+
+staging: *production
+
+development: &development
+  <<: *production
+  # Lower limit for testing
+  dry_run: true
+  authenticated:
+    enabled: true
+    period: 60 # seconds
+    max_requests: 10
+    max_db_runtime: 30 # seconds
+    max_runtime: 40 # seconds
+  unauthenticated:
+    enabled: true
+    period: 60 # seconds
+    max_requests: 10
+    max_db_runtime: 30 # seconds
+    max_runtime: 40 # seconds
+
+test:
+  # Disabled entirely in the test environment
+  dry_run: true
+  authenticated:
+    enabled: false
+    period: 60 # seconds
+    max_requests: 10
+    max_db_runtime: 30 # seconds
+    max_runtime: 40 # seconds
+  unauthenticated:
+    enabled: false
+    period: 60 # seconds
+    max_requests: 10
+    max_db_runtime: 30 # seconds
+    max_runtime: 40 # seconds
+  custom_rulesets: {}
+  whitelist:
+    path: []
+    uid: []
+    ip: []
+    token_type: []

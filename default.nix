@@ -3,17 +3,19 @@
 , isRelease ? false }:
 
 let
-  inherit (import ./nix/dependencies.nix { inherit pkgs isRelease; }) bundler bundix ruby postgresql psql ociTools;
+  inherit (import ./nix/dependencies.nix { inherit pkgs isRelease; }) bundler bundix ruby postgresql opensearch psql ociTools;
 
   inherit (pkgs) lib callPackage writeShellScript makeWrapper runCommand buildEnv writeShellScriptBin;
 
-  services = callPackage ./nix/services.nix { inherit postgresql; };
-  main     = callPackage ./nix/moergo_web.nix { inherit ruby bundler postgresql; };
+  services = callPackage ./nix/services.nix { inherit postgresql opensearch; };
+  main     = callPackage ./nix/demoapp.nix { inherit ruby bundler postgresql; };
 in
 
 rec {
-  inherit (main) bundleEnv bundleProdEnv moergo_web uuidTools runtimeDependencies;
+  inherit (main) bundleEnv bundleProdEnv demoapp uuidTools runtimeDependencies;
 
+  # To run services
+  #  ./nix/start-services
   # To build a procfile:
   #  nix-build -A services.procfile -o services.procfile
   # Or to run services directly:
@@ -21,7 +23,7 @@ rec {
   inherit services;
 
   developmentDependencies = with pkgs; runtimeDependencies ++ [
-    postgresql redis jq coreutils
+    postgresql jq coreutils
   ];
 
   # To update Gemfile.lock/gemset.nix

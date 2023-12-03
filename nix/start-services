@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+# Note this runs in the default system bash, not the pinned bash, so
+# we must not use any newer bash features here.
+
+set -e
+set -o pipefail
+
+# Everything is relative to the Rails root
+cd "$(dirname "$0")"/..
+
+[ -r nix/env ] && source nix/env
+
+exec "$(nix-build --no-out-link nix/scripts.nix -A "$(basename "$0")")"

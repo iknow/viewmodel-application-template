@@ -1,4 +1,6 @@
-require "active_support/core_ext/integer/time"
+# frozen_string_literal: true
+
+require 'active_support/core_ext/integer/time'
 
 Rails.application.configure do
   # Settings specified here will take precedence over those in config/application.rb.
@@ -17,28 +19,22 @@ Rails.application.configure do
   # Enable server timing
   config.server_timing = true
 
-  # Enable/disable caching. By default caching is disabled.
-  # Run rails dev:cache to toggle caching.
-  if Rails.root.join("tmp/caching-dev.txt").exist?
-    config.action_controller.perform_caching = true
-    config.action_controller.enable_fragment_cache_logging = true
-
-    config.cache_store = :memory_store
-    config.public_file_server.headers = {
-      "Cache-Control" => "public, max-age=#{2.days.to_i}"
-    }
-  else
-    config.action_controller.perform_caching = false
-
-    config.cache_store = :null_store
-  end
+  # Enable/disable caching. By default caching is enabled, with memcached.
+  config.action_controller.perform_caching = true
+  config.public_file_server.headers = {
+    'Cache-Control' => 'public, max-age=172800',
+  }
 
   # Store uploaded files on the local file system (see config/storage.yml for options).
   config.active_storage.service = :local
 
-  # Don't care if the mailer can't send.
-  config.action_mailer.raise_delivery_errors = false
+  # Use in-process GoodJob queuing backend for Active Job
+  config.active_job.queue_adapter = :good_job
+  config.good_job.execution_mode = :async
 
+  # Don't care if the mailer can't send.
+  config.action_mailer.perform_deliveries = false
+  config.action_mailer.raise_delivery_errors = false
   config.action_mailer.perform_caching = false
 
   # Print deprecation notices to the Rails logger.
@@ -55,6 +51,11 @@ Rails.application.configure do
 
   # Highlight code that triggered database queries in logs.
   config.active_record.verbose_query_logs = true
+
+  # Allow access from our development name
+  # tied to the frontend certificate
+  config.hosts << 'localhost.devdomain.name'
+  config.hosts << 'api.devdomain.name'
 
   # Suppress logger output for asset requests.
   config.assets.quiet = true
