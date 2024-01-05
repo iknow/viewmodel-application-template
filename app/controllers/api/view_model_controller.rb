@@ -134,8 +134,9 @@ class Api::ViewModelController < Api::ApplicationController
                                        with: ParamSerializers::Language::Insensitive,
                                        default: nil)
 
-    validate_lookup_strategy!(nil, current_filters, current_page,
-                              strategy: LookupStrategy::Search)
+    required_strategy = search_class.uses_scope_filters? ? LookupStrategy::Scope : LookupStrategy::Search
+
+    validate_lookup_strategy!(nil, current_filters, current_page, strategy: required_strategy)
 
     pre_rendered = viewmodel_class.transaction do
       models = perform_search(query,
@@ -240,10 +241,10 @@ class Api::ViewModelController < Api::ApplicationController
   # Return the specific strategy most appropriate to the filtered/paginated
   # request, optionally constrained to the `strategy` parameter. Returns nil if
   # no matching strategy could be identified.
-  def resolve_lookup_strategy(scope, filters, page, strategy:  LookupStrategy::Either)
+  def resolve_lookup_strategy(scope, filters, page, strategy: LookupStrategy::Either)
     if strategy.can_scope? && filters.can_scope? && (page.nil? || page.can_scope?)
       LookupStrategy::Scope
-    elsif strategy.can_search? && scope.nil? && filters.can_search? && (page.nil? || page.can_search?)
+    elsif strategy.can_search? && !search_class.uses_scope_filters? && scope.nil? && filters.can_search? && (page.nil? || page.can_search?)
       LookupStrategy::Search
     else
       nil

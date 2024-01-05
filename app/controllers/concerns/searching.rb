@@ -42,10 +42,12 @@ module Searching
       models    = search.load_models(lock:)
       model_ids = models.each_with_object(Set.new) { |m, s| s << m.id }
 
-      # We may not have been able to resolve models for each of the ES results:
-      # filter stale entities from total counts and supplementary data
-      stale_count = search.size - models.size
-      add_response_metadata(:search, SearchResultView.new(search.total - stale_count, stale_count))
+      if search.total
+        # We may not have been able to resolve models for each of the ES results:
+        # filter stale entities from total counts and supplementary data
+        stale_count = search.size - models.size
+        add_response_metadata(:search, SearchResultView.new(search.total - stale_count, stale_count))
+      end
 
       if page
         last_page = !page.size_limit? || (page.start + page.page_size) >= search.total

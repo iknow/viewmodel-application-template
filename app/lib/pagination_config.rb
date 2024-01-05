@@ -22,7 +22,8 @@ class PaginationConfig
     end
 
     add_pagination_order(:relevance, default_direction: 'desc') do
-      scope nil
+      # For PostgresIndexedSearch, rank will always be a selected column named ts_rank.
+      scope { |direction| model_class.reorder(ts_rank: direction) }
       search { |direction| { '_score' => { order: direction } } }
     end
   end
