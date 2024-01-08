@@ -1,0 +1,6 @@
+---
+perform_deliveries: false
+host: localhost
+port: 1025
+username: ''
+password: ''

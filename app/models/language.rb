@@ -4,8 +4,10 @@
 #
 # Table name: languages
 #
-#  id   :enum             not null, primary key
-#  code :string           not null, indexed
+#  id          :enum             not null, primary key
+#  code        :string           not null, indexed
+#  name        :string
+#  ideographic :boolean
 #
 # Indexes
 #

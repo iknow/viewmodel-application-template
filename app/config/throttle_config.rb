@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require 'loadable_config'
-require 'json_schema_helper'
 
 class ThrottleConfig < LoadableConfig
   LIMITS_SCHEMA = JsonSchemaHelper.build {

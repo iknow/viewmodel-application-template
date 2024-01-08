@@ -8,10 +8,10 @@ require 'rails'
 require 'active_model/railtie'
 require 'active_job/railtie'
 require 'active_record/railtie'
-require 'active_storage/engine'
+# require 'active_storage/engine'
 require 'action_controller/railtie'
 require 'action_mailer/railtie'
-require 'action_mailbox/engine'
+# require 'action_mailbox/engine'
 require 'action_text/engine'
 require 'action_view/railtie'
 require 'action_cable/engine'
@@ -42,7 +42,16 @@ module Demoapp
     end
 
     # Initialize configuration defaults for originally generated Rails version.
-    config.load_defaults 7.0
+    config.load_defaults 7.1
+    config.active_support.cache_format_version = 7.1
+
+    # We may require this?
+    # config.add_autoload_paths_to_load_path = false
+
+    # Please, add to the `ignore` list any other `lib` subdirectories that do
+    # not contain `.rb` files, or that should not be reloaded or eager loaded.
+    # Common ones are `templates`, `generators`, or `middleware`, for example.
+    config.autoload_lib(ignore: %w(assets tasks generators middleware))
 
     # Configuration for the application, engines, and railties goes here.
     #

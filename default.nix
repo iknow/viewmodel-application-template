@@ -23,7 +23,7 @@ rec {
   inherit services;
 
   developmentDependencies = with pkgs; runtimeDependencies ++ [
-    postgresql jq coreutils
+    postgresql jq coreutils nodejs yarn
   ];
 
   # To update Gemfile.lock/gemset.nix

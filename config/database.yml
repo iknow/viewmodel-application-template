@@ -47,7 +47,7 @@ test:
 # Read https://guides.rubyonrails.org/configuring.html#configuring-a-database
 # for a full overview on how database connection configuration can be specified.
 #
-production:
+production: &production
   <<: *default
   database: '<%= ENV["RAILS_DATABASE_NAME"] %>'
   host: '<%= ENV["RAILS_DATABASE_HOST"] %>'
@@ -55,3 +55,7 @@ production:
   password: '<%= ENV["RAILS_DATABASE_PASSWORD"] %>'
   variables:
       statement_timeout: <%= ENV.fetch("RAILS_DATABASE_TIMEOUT", 30000) %>
+
+staging:
+  <<: *production
+  database: moergo_staging

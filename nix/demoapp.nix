@@ -55,7 +55,7 @@ let
       patches = [
         # fix rollbacks hanging on interrupt
         # https://github.com/rails/rails/pull/42767
-        ./activerecord-rollback.patch
+        # ./activerecord-rollback.patch
         # cancel queries if migration is cancelled, this can't be upstreamed
         # since it uses PG specific code in the migration runner.
         ./activerecord-migration-cancel.patch
