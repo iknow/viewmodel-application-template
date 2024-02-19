@@ -2,7 +2,7 @@
 
 This template Rails application provides a starting point for developing a
 new Rails API application using the
-[https://github.com/iknow/iknow_view_models/](`iknow_view_models`) library.
+[`iknow_view_models`](https://github.com/iknow/iknow_view_models/) library.
 
 For our internal purposes, it also serves as a guide for what parts of our main
 application itself should be abstracted and extracted into shared library code
