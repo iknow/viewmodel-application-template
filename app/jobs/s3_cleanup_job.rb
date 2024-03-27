@@ -6,11 +6,11 @@ class S3CleanupJob < ApplicationJob
   queue_as :s3_cleanup
 
   retry_on S3Client::DeletionError, S3Client::AccessDeniedError, wait: 5.minutes, attempts: 3 do |job, err|
-    warn_failed_cleanup(err, *job.arguments)
+    warn_failed_cleanup(job, err)
   end
 
   discard_on S3Client::SourceMissingError do |job, err|
-    warn_failed_cleanup(err, *job.arguments)
+    warn_failed_cleanup(job, err)
   end
 
   def perform(region, bucket, path, _committed)
@@ -18,18 +18,21 @@ class S3CleanupJob < ApplicationJob
     client.delete(path)
   end
 
-  def self.warn_failed_cleanup(err, region, bucket, path, committed)
+  def self.warn_failed_cleanup(job, err)
+    region, bucket, path, committed = job.arguments
     type = committed ? 'original' : 'copied'
     action = committed ? 'commit' : 'rollback'
     message = "Upload from S3: failed to delete #{type} file after #{action}."
 
-    Honeybadger.notify(err, context: {
-                         'message' => message,
-                         'error'   => err.message,
-                         'region'  => region,
-                         'bucket'  => bucket,
-                         'path'    => path,
-                       })
+    context = {
+      'message' => message,
+      'error'   => err.message,
+      'region'  => region,
+      'bucket'  => bucket,
+      'path'    => path,
+    }
+
+    job.report_error(err, context:)
 
     Rails.logger.warn(
       "#{message} " \

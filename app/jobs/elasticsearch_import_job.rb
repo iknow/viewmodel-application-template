@@ -3,11 +3,15 @@
 class ElasticsearchImportJob < ApplicationJob
   queue_as :default
 
-  retry_on Faraday::TimeoutError,
-           Faraday::ConnectionFailed,
-           Elasticsearch::Transport::Transport::ServerError,
-           wait: :exponentially_longer,
-           attempts: 10
+  retry_on(
+    Faraday::TimeoutError,
+    Faraday::ConnectionFailed,
+    Elasticsearch::Transport::Transport::ServerError,
+    wait: :exponentially_longer,
+    attempts: 50,
+  ) do |job, err|
+    job.final_error_handler(err)
+  end
 
   NOTIFY_AFTER_RETRIES = 3
 
@@ -16,7 +20,7 @@ class ElasticsearchImportJob < ApplicationJob
     index_class.import_with_lock(*model_ids)
   rescue StandardError => e
     if executions > NOTIFY_AFTER_RETRIES
-      Honeybadger.notify(e, context: { retry_count: executions })
+      report_error(e)
     end
     raise
   end
