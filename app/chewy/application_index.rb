@@ -6,14 +6,14 @@ module ApplicationIndex
 
   # Unspecified languages will use the "standard" analyzer.
   LANGUAGE_ANALYZERS = {
-    Language::DE      => 'german',
     Language::EN      => 'english',
-    Language::ES      => 'spanish',
-    Language::FR      => 'french',
-    Language::JA      => 'kuromoji',
-    Language::KO      => 'cjk', ## No specialized Korean analyzer
-    Language::ZH_HANS => 'smartcn',
-    Language::ZH_HANT => 'smartcn',
+  #   Language::DE      => 'german',
+  #   Language::ES      => 'spanish',
+  #   Language::FR      => 'french',
+  #   Language::JA      => 'kuromoji',
+  #   Language::KO      => 'cjk',
+  #   Language::ZH_HANS => 'smartcn',
+  #   Language::ZH_HANT => 'smartcn',
   }.freeze
 
   EMAIL_ANALYZER_SETTINGS = {

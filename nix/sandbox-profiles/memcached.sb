@@ -1,0 +1,10 @@
+(version 1)
+
+(deny default)
+
+(import "@common@")
+
+@helpers@
+
+;; This is a network server, it binds and accepts connections
+(allow network-bind network-inbound (local tcp))

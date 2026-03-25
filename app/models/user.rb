@@ -6,6 +6,7 @@
 #
 #  id                    :uuid             not null, primary key
 #  email                 :string           not null
+#  name                  :string
 #  interface_language_id :enum             not null, indexed
 #  created_at            :datetime         not null
 #  updated_at            :datetime         not null
@@ -20,6 +21,12 @@
 #
 class User < ApplicationRecord
   belongs_to_enum :interface_language, class_name: 'Language'
+
+  validates :email, email: { use_blocklist: false }
+  validates :name, length: { maximum: 20 }
+
+  validates_all_not_null_columns!
+  validates_all_string_columns!
 
   # FIXME: the minimal demo has no model of user permissions
   def effective_permissions

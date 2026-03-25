@@ -2,6 +2,9 @@
 
 class Api::ViewModelController < Api::ApplicationController
   include ViewModel::ActiveRecord::Controller
+  include BackgroundRendering
+
+  backgroundable_action :index, :index_associated, :search
 
   enum :LookupStrategy do
     include LowercaseRenum

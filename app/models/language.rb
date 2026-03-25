@@ -18,5 +18,6 @@
 class Language < ApplicationRecord
   acts_as_sql_enum(name_attr: :code) do
     en(name: 'English')
+    it(name: 'Italian')
   end
 end

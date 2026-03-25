@@ -15,5 +15,7 @@ class Ability < ApplicationRecord
   acts_as_sql_enum do
     viewUsers
     editUsers
+    makeBackgroundRequest
+    downloadCsv
   end
 end

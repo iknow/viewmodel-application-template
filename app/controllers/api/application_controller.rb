@@ -65,6 +65,11 @@ class Api::ApplicationController < ActionController::API
       end
   end
 
+  def current_principal
+    # FIXME: this might be a machine account outside the minimal demo
+    current_resource_owner
+  end
+
   def permissions
     # FIXME: the minimal demo has no model for assigning permissions to users
     @permissions ||=
@@ -74,6 +79,11 @@ class Api::ApplicationController < ActionController::API
         Permissions.unauthenticated
       end
   end
+
+  delegate :authorize!, :authorize_ability!,
+           :authorize_ability_for_all_orgs!, :authorize_ability_for_any_org!,
+           :authorize_any_ability_for_all_orgs!,
+           to: :permissions
 
   def uploaded_files
     @uploaded_files ||= request.params.fetch(Middleware::MultipartUpload::UPLOADED_FILES_PARAM, {})
@@ -172,7 +182,7 @@ class Api::ApplicationController < ActionController::API
       opts = opts.merge(tags: 'suppress_notification')
     end
 
-    Honeybadger.notify(exception, opts)
+    Honeybadger.notify(exception, **opts)
   end
 
   # Allow Rack middleware to use viewmodel error rendering

@@ -94,11 +94,21 @@ class ApplicationView < ViewModel::ActiveRecord
 
     class SharedContext < ViewModel::DeserializeContext::SharedContext
       include SharedContextBase
+
+      def initialize(allow_remote_upload: false, **rest)
+        @allow_remote_upload = allow_remote_upload
+        super(**rest)
+      end
+
+      # Can media upload URLs refer to remote off-site URLs
+      attr_reader :allow_remote_upload
     end
 
     def self.shared_context_class
       SharedContext
     end
+
+    delegate :allow_remote_upload, to: :shared_context
   end
 
   def self.deserialize_context_class

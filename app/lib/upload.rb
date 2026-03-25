@@ -56,7 +56,7 @@ class Upload
   REMOTE_FILE_HOST_WHITELIST = [
   ].to_set.freeze
 
-  def self.build(url, multipart_uploads)
+  def self.build(url, multipart_uploads, allow_remote_upload: false)
     # URI(url) is not performant when url is > 10mb.  We don't want to support
     # this, but making this work in the client is much more effort.
     # https://github.com/iknow/issues/issues/17
@@ -84,7 +84,8 @@ class Upload
       begin
         Upload::Inbox.new(uri)
       rescue S3Client::InvalidInboxUrlError
-        Upload::RemoteFile.new(uri)
+        allowed_hosts = allow_remote_upload ? :any : REMOTE_FILE_HOST_WHITELIST
+        Upload::RemoteFile.new(uri, allowed_hosts:)
       end
     else
       raise InvalidURI.new(uri)
@@ -142,7 +143,10 @@ class Upload
 
       case key
       when 'charset'
+        # extract the charset for use in parsing and discard
         explicit_encoding = Encoding.find(value)
+      else
+        explicit_content_type << ";#{key}=#{value}" if explicit_content_type
       end
     end
 

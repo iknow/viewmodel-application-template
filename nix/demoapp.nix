@@ -43,24 +43,36 @@ let
   };
 
   baseGemConfig = defaultGemConfig.override {
-    inherit postgresql;
     libxml2 = libxml2-nopython;
     libxslt = libxslt-nopython;
   };
 
   gemConfig = baseGemConfig // {
+    idn-ruby = attrs: {
+      dontBuild = false;
+      buildFlags = [
+        "--with-idn-lib=${lib.getLib libidn}/lib"
+        "--with-idn-include=${lib.getDev libidn}/include"
+      ];
+    };
     activerecord = attrs: {
       dontBuild = false;
       patchFlags = "-p2";
       patches = [
-        # fix rollbacks hanging on interrupt
-        # https://github.com/rails/rails/pull/42767
-        # ./activerecord-rollback.patch
         # cancel queries if migration is cancelled, this can't be upstreamed
         # since it uses PG specific code in the migration runner.
         ./activerecord-migration-cancel.patch
       ];
     };
+
+    irb = attrs: {
+      dontBuild = false;
+      patches = [
+        # Fix sandboxed history persistence
+        ./irb-history.patch
+      ];
+    };
+
     pg = attrs: (baseGemConfig.pg attrs) // {
       # We once carefully removed references to postgres, however that was fixed
       # upstream in nixpkgs. We add an extra safeguard here to make sure we
@@ -68,18 +80,30 @@ let
       # See https://github.com/NixOS/nixpkgs/pull/237858
       disallowedRequisites = (attrs.disallowedRequisites or []) ++ [ postgresql.out ];
     };
-    reline = attrs: {
-      dontBuild = false;
-      patches = [
-        (substituteAll {
-          src = ./reline-explicit-curses-path.patch;
-          curses_lib = "${lib.getLib ncurses}/lib/libncursesw${stdenv.hostPlatform.extensions.sharedLibrary}";
-        })
-      ];
-    };
+
     ruby-debug-ide = attrs: {
       dependencies = attrs.dependencies ++ ["debase"];
     };
+
+    ruby-filemagic = attrs: {
+      buildFlags = [
+        "--with-magic-lib=${lib.getLib file}/lib"
+        "--with-magic-include=${lib.getDev file}/include"
+        "--with-gnurx-lib=${lib.getLib file}/lib"
+        "--with-gnurx-include=${lib.getDev file}/include"
+      ];
+    };
+
+    ruby_speech = attrs: {
+      nativeBuildInputs = [ pkg-config ];
+      buildInputs = [ pcre ];
+    };
+
+    mimemagic = attrs: {
+      FREEDESKTOP_MIME_TYPES_PATH = "${shared-mime-info}/share/mime/packages/freedesktop.org.xml";
+    };
+
+    # TODO upstream
     nokogiri = attrs: {
       nativeBuildInputs = [ pkg-config ];
       buildInputs = [
@@ -91,7 +115,69 @@ let
         "--use-system-libraries"
       ];
     };
-    ffi = attrs: {
+
+    suo = attrs: {
+      dontBuild = false;
+      patches = (attrs.patches or []) ++ [
+        (fetchpatch {
+          # https://github.com/nickelser/suo/pull/21
+          url = "https://github.com/nickelser/suo/commit/6fa25dd573ed0cc49acb81b4d25fff6bd4fd0c2f.patch";
+          sha256 = "sha256-54ftGXNd7OCs6vleoXWbTwZwH6sAWvVhHJt0eL/jMvM=";
+        })
+      ];
+    };
+
+    tiktoken_ruby = attrs: rec {
+      dontBuild = false;
+
+      nativeBuildInputs = [
+        ruby
+        rustc
+        cargo
+        rustPlatform.cargoSetupHook
+        rustPlatform.bindgenHook
+        removeReferencesTo
+      ];
+
+      buildInputs = lib.optionals stdenv.isDarwin [ libiconv ];
+
+      # src is extracted from buildRubyGem so that they can be
+      # referenced from the fetchCargoTarball, since otherwise they'd be
+      # unavailable to it.
+      src = fetchurl {
+        urls = ["https://rubygems.org/gems/${attrs.gemName}-${attrs.version}.gem"];
+        inherit (attrs.source) sha256;
+      };
+
+      # Needed so bindgen can find libclang.so
+      LIBCLANG_PATH = "${lib.getLib rustc.llvmPackages.libclang}/lib";
+
+      # gem install presumably builds the native component outside of $NIX_BUILD_TOP
+      # Make sure the cargo config for the vendor directory propagates.
+      preInstall = ''
+        export CARGO_HOME=$NIX_BUILD_TOP/.cargo
+      '';
+
+      cargoDeps = let
+          cargo_lockFile = runCommand "${attrs.gemName}-Cargo.lock" {
+            nativeBuildInputs = [ ruby ];
+          } ''
+            gem unpack "${src}" --target container
+            mv container/*/Cargo.lock $out
+          '';
+      in rustPlatform.importCargoLock {
+        lockFile = cargo_lockFile;
+        allowBuiltinFetchGit = true;
+      };
+
+      postInstall = ''
+        grep -lR ${rustc.unwrapped} $out | xargs remove-references-to -t ${rustc.unwrapped}
+      '';
+
+      disallowedRequisites = [ rustc rustc.unwrapped ];
+    };
+
+    ffi = attrs: (baseGemConfig.ffi attrs) // {
       postInstall = ''
         find $out -iname libtool -delete
         find $out -iname config.log -delete
@@ -105,6 +191,27 @@ let
         cc.bintools.bintools
       ];
     };
+
+    net-http2 = attrs: {
+      dontBuild = false;
+      patches = (attrs.patches or []) ++ [
+        ./net-http2-safety-and-errors.patch
+      ];
+    };
+
+    devise = attrs: {
+      dontBuild = false;
+      patches = (attrs.patches or []) ++ [
+        # Tests fail due to routes being lazy loaded
+        # See https://github.com/heartcombo/devise/issues/5794
+        (fetchpatch {
+          url = "https://github.com/heartcombo/devise/commit/24c47140e5d2e484b49796c934a8c1efb2a434b5.patch";
+          excludes = [ "CHANGELOG.md" ];
+          sha256 = "sha256-6460aBkYlgkD9l3M6n8nf80uzM3j1jLK0Xv2ficPvCk=";
+        })
+      ];
+    };
+
     annotate = attrs: {
       dontBuild = false;
       patches = (attrs.patches or []) ++ [

@@ -1,12 +1,11 @@
 # frozen_string_literal: true
 
-require 'view_model/test_helpers'
 require 'view_model/access_control'
 
 module ViewModelHelper
   extend ActiveSupport::Concern
 
-  include ViewModel::TestHelpers
+  include ViewModelTestUtils
 
   def serialize_to_hash(viewmodel, **context_options)
     viewmodel_class = Array.wrap(viewmodel).first.class
@@ -17,52 +16,19 @@ module ViewModelHelper
   def serialize_to_hash_with_refs(viewmodel, **context_options)
     viewmodel_class = Array.wrap(viewmodel).first.class
     ctx = vm_serialize_context(viewmodel_class, **context_options)
-    view = ViewModel.serialize_to_hash(viewmodel, serialize_context: ctx)
-    refs = ctx.serialize_references_to_hash
-    [view, refs]
+    super(viewmodel, serialize_context: ctx)
   end
 
   def serialize_to_new_hash_with_refs(viewmodel, id: nil, **context_options)
-    view_hash, refs = serialize_to_hash_with_refs(viewmodel, **context_options)
-    strip_serialization_metadata(view_hash)
-
-    if id
-      view_hash['id'] = id
-      view_hash[ViewModel::NEW_ATTRIBUTE] = true
-    end
-
-    # Retain only references used from the roots, as type/id
-    refs.each_value do |ref_view|
-      ref_view.slice!('id', '_type')
-    end
-    gc_refs(view_hash, refs)
-
-    [view_hash, refs]
-  end
-
-  def gc_refs(view, refs)
-    ViewModel::GarbageCollection.garbage_collect_references!('data' => view, 'references' => refs)
+    viewmodel_class = Array.wrap(viewmodel).first.class
+    ctx = vm_serialize_context(viewmodel_class, **context_options)
+    super(viewmodel, id:, serialize_context: ctx)
   end
 
   def serialize_to_new_hash(viewmodel, id: nil, **context_options)
-    view_hash, = serialize_to_new_hash_with_refs(viewmodel, id:, **context_options)
-    view_hash
-  end
-
-  def serialize_reference(viewmodel_ref)
-    ref      = "ref:#{SecureRandom.hex(10)}"
-    ref_key  = { '_ref' => ref }
-    ref_body = { ref => { '_type' => viewmodel_ref.viewmodel_class.view_name, 'id' => viewmodel_ref.model_id } }
-    [ref_key, ref_body]
-  end
-
-  def fupdate_append(*views)
-    fupdate = {
-      '_type' => '_update',
-      'actions' => [
-        { '_type' => 'append', 'values' => views },
-      ],
-    }
+    viewmodel_class = Array.wrap(viewmodel).first.class
+    ctx = vm_serialize_context(viewmodel_class, **context_options)
+    super(viewmodel, id:, serialize_context: ctx)
   end
 
   def vm_request_ip
@@ -112,26 +78,19 @@ module ViewModelHelper
     super(viewmodel_class, model, serialize_context:, deserialize_context:)
   end
 
-  # Traverse a VM serialization and strip identifying metadata
-  def strip_serialization_metadata(x)
-    case x
-    when Hash
-      x.delete('id')
-      x.delete('lock_version')
-      x.delete('created_at')
-      x.each_value { |v| strip_serialization_metadata(v) }
-    when Array
-      x.each { |v| strip_serialization_metadata(v) }
-    end
-  end
+  def alter_by_migrated_view!(viewmodel_class, model, edit_version,
+                              additional_versions: {},
+                              serialize_context:   vm_serialize_context(viewmodel_class),
+                              deserialize_context: vm_deserialize_context(viewmodel_class))
+    alter_by_view!(viewmodel_class, model, serialize_context:, deserialize_context:) do |data, references|
+      down_migrator = ViewModel::DownMigrator.new({ viewmodel_class => edit_version, **additional_versions })
+      down_migrator.migrate!({ 'data' => data, 'references' => references })
 
-  def merge_viewmodel_metadata(hash, view_model_class, mark_as_new: false)
-    default_metadata = {
-      ViewModel::TYPE_ATTRIBUTE    => view_model_class.view_name,
-      ViewModel::VERSION_ATTRIBUTE => view_model_class.schema_version,
-      ViewModel::NEW_ATTRIBUTE     => mark_as_new,
-    }
-    default_metadata.merge(hash)
+      yield(data, references)
+
+      up_migrator = ViewModel::UpMigrator.new({ viewmodel_class => edit_version, **additional_versions })
+      up_migrator.migrate!({ 'data' => data, 'references' => references })
+    end
   end
 
   RSpec.shared_examples 'can run all defined migrations' do |viewmodel_class|
@@ -155,6 +114,7 @@ module ViewModelHelper
 
         expect {
           path.reverse_each { |m| m.down(view, refs) }
+          ViewModel::GarbageCollection.garbage_collect_references!({ data: view, references: refs })
         }.not_to raise_error
 
         @@down_result_cache ||= {}
@@ -169,6 +129,7 @@ module ViewModelHelper
 
         expect do
           path.each { |m| m.up(old_view, old_refs) }
+          ViewModel::GarbageCollection.garbage_collect_references!({ data: old_view, references: old_refs })
         rescue ViewModel::Migration::OneWayError
           nil
         end.not_to raise_error

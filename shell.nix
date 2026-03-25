@@ -5,6 +5,7 @@ with pkgs;
 
 let
   demoapp = import ./default.nix { inherit pkgs; };
+  inherit (demoapp) sandbox;
 in
 
 stdenvNoCC.mkDerivation {
@@ -12,9 +13,9 @@ stdenvNoCC.mkDerivation {
 
   buildInputs = [
     bashInteractive gnutar
-    demoapp.bundleLock
-    demoapp.bundleEnv
-    demoapp.bundleEnv.wrappedRuby
+    (sandbox demoapp.bundleLock {})
+    (sandbox demoapp.bundleEnv {})
+    (sandbox demoapp.bundleEnv.wrappedRuby {})
   ] ++ demoapp.developmentDependencies;
 
   DEMOAPP_BUNDLE_ENV_PATH = demoapp.bundleEnv;

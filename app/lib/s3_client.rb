@@ -78,18 +78,31 @@ class S3Client
     end
   end
 
-  def upload_file(body, filename:, content_type:, metadata: {}, filename_addresses_content: false, schedule_finalizer: true)
+  def upload_file(body, filename:, content_type:, options: {}, metadata: {}, filename_addresses_content: false, always_touch: false, schedule_finalizer: true)
     obj = bucket.object(filename)
     finalizer = nil
     updated = false
 
     begin
-      unless filename_addresses_content && obj.exists?
-        obj.put(body:, content_type:, metadata:)
+      content_addressed_header =
+        if filename_addresses_content
+          begin
+            head(filename)
+          rescue SourceMissingError, AccessDeniedError
+            nil
+          end
+        end
 
+      if content_addressed_header.nil?
+        obj.put(body:, content_type:, metadata:, **options)
         updated = true
         finalizer = Upload::CreateTransactionFinalizer.new(region:, bucket: bucket_name, path: filename)
         finalizer.add_to_transaction if schedule_finalizer
+      elsif always_touch
+        # We can't have a rollback finalizer for this because S3 doesn't permit
+        # user-selected last modified time. If we wanted that, we'd need to use
+        # custom metadata for last modified.
+        touch(filename, content_addressed_header.metadata)
       end
     rescue Aws::S3::Errors::ServiceError, Timeout::Error, Seahorse::Client::NetworkingError => e
       raise UploadError.new("S3 upload error: #{e.message}")
@@ -106,6 +119,7 @@ class S3Client
            content_type: nil,
            metadata: nil,
            filename_addresses_content: false,
+           always_touch: false,
            schedule_finalizer: true)
     unless @region == from_region
       raise InvalidRegionError.new('S3 files can only be moved within a region')
@@ -118,6 +132,7 @@ class S3Client
       content_type:,
       metadata:,
       filename_addresses_content:,
+      always_touch:,
       schedule_finalizer: false)
 
     finalizer = Upload::MoveTransactionFinalizer.new(
@@ -138,6 +153,7 @@ class S3Client
            content_type: nil,
            metadata: nil,
            filename_addresses_content: false,
+           always_touch: false,
            schedule_finalizer: true)
     unless region == from_region
       raise InvalidRegionError.new('S3 files can only be copied within a region')
@@ -151,7 +167,17 @@ class S3Client
       end
 
     begin
-      if filename_addresses_content && bucket.object(to).exists?
+      content_addressed_header =
+        if filename_addresses_content
+          begin
+            head(to)
+          rescue SourceMissingError, AccessDeniedError
+            nil
+          end
+        end
+
+      if content_addressed_header
+        touch(to, content_addressed_header.metadata) if always_touch
         UploadResult.new(to, bucket_name, region, false, nil)
       else
         options = {}
@@ -210,6 +236,28 @@ class S3Client
     raise DeletionError.new("S3 deletion error: #{e.message}")
   end
 
+  TOUCH_METADATA_KEY = 'x-amz-meta-touched'
+
+  def touch(filename, metadata)
+    # S3 objects are immutable, so to touch a file you have to copy it to
+    # itself. It's not permitted to self-copy with identical metadata, so we're
+    # forced to make a change.
+    touched_count = metadata[TOUCH_METADATA_KEY].to_i + 1
+    new_metadata = metadata.merge(TOUCH_METADATA_KEY => touched_count.to_s)
+
+    bucket.object(filename).copy_to(
+      bucket.object(filename),
+      metadata_directive: 'REPLACE',
+      metadata: new_metadata,
+      tagging_directive: 'COPY')
+  rescue Aws::S3::Errors::NotFound, Aws::S3::Errors::NoSuchKey => e
+    raise SourceMissingError.new("S3 touch (self-copy) error: source missing #{bucket_name}/#{filename}: #{e.message}")
+  rescue Aws::S3::Errors::AccessDenied => e
+    raise AccessDeniedError.new("S3 touch (self-copy) error: #{e.message}")
+  rescue Aws::S3::Errors::ServiceError, Timeout::Error, Seahorse::Client::NetworkingError => e
+    raise CopyError.new("S3 touch (self-copy) error #{bucket_name}/#{filename}: #{e.message}")
+  end
+
   def head(filename)
     head_result = bucket.object(filename).data
     ObjectMetadata.build(head_result)
@@ -221,7 +269,7 @@ class S3Client
     raise ReadError.new("S3 read error: #{e.message}")
   end
 
-  def get(filename)
+  def get(filename, unlink: true)
     obj = bucket.object(filename)
     tempfile = Tempfile.new('s3-download-cache')
     tempfile.binmode
@@ -229,8 +277,24 @@ class S3Client
     s3_result = obj.get(response_target: tempfile.path)
 
     tempfile.rewind
-    tempfile.unlink
+    tempfile.unlink if unlink
     return tempfile, ObjectMetadata.build(s3_result)
+  rescue Aws::S3::Errors::NotFound, Aws::S3::Errors::NoSuchKey => e
+    raise SourceMissingError.new("S3 read error: #{e.message}")
+  rescue Aws::S3::Errors::AccessDenied => e
+    raise AccessDeniedError.new("S3 read error: #{e.message}")
+  rescue Aws::S3::Errors::ServiceError, Timeout::Error, Seahorse::Client::NetworkingError => e
+    raise ReadError.new("S3 read error: #{e.message}")
+  end
+
+  def stream(filename, &)
+    obj = bucket.object(filename)
+
+    s3_result = obj.get do |chunk, _headers|
+      yield(chunk)
+    end
+
+    return ObjectMetadata.build(s3_result)
   rescue Aws::S3::Errors::NotFound, Aws::S3::Errors::NoSuchKey => e
     raise SourceMissingError.new("S3 read error: #{e.message}")
   rescue Aws::S3::Errors::AccessDenied => e
@@ -289,15 +353,30 @@ class S3Client
       S3Client.new(region: config.inbox_region, bucket_name: config.inbox_bucket_name)
     end
 
-    def generate_inbox_url(region, expires_in: 15.minutes)
+    def generate_inbox_location(region)
       config = config_for(region)
+      inbox_client = inbox_client(region)
+
       filename = "upload-#{SecureRandom.uuid}"
 
       if (prefix = config.inbox_path_prefix)
         filename = File.join(prefix, filename)
       end
 
-      inbox_client(region).presigned_url(filename, method: :put, expires_in:)
+      [region, inbox_client.bucket_name, filename]
+    end
+
+    def generate_inbox_url(region, expires_in: 15.minutes, method: :put)
+      _, _, filename = generate_inbox_location(region)
+
+      inbox_client(region).presigned_url(filename, method:, expires_in:)
+    end
+
+    def upload_to_inbox(file, region: default_region, expires_in: 15.minutes, content_type:, **upload_args)
+      inbox_url = generate_inbox_url(region, method: :get, expires_in:)
+      region, bucket_name, filename = parse_inbox_url(inbox_url)
+      S3Client.new(region:, bucket_name:).upload_file(file, filename:, content_type:, **upload_args)
+      inbox_url
     end
 
     def parse_inbox_url(url)

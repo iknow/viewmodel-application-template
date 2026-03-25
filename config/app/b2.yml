@@ -1,0 +1,22 @@
+---
+development: &development
+  access_key_id:     none
+  secret_access_key: none
+  default_region:    b2/us-west-000
+  inbox_bucket_name: demoapp-dev
+  inbox_path_prefix: demoapp-inbox-dev
+
+test: *development
+
+production: &production
+  access_key_id:     <%= ENV['B2_ACCESS_KEY_ID'] %>
+  secret_access_key: <%= ENV['B2_SECRET_ACCESS_KEY'] %>
+  default_region:    b2/us-west-000
+  inbox_bucket_name: demoapp
+  inbox_path_prefix: demoapp-inbox
+
+staging:
+  <<: *production
+  default_region:    b2/us-west-000
+  inbox_bucket_name: demoapp-staging
+  inbox_bucket_name: demoapp-inbox-staging

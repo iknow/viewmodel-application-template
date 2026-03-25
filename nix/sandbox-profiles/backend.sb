@@ -1,0 +1,75 @@
+(version 1)
+
+(deny default)
+
+(import "@common@")
+
+@helpers@
+
+(eikaiwa--full-source-access)
+
+;; Backend has external dependencies (openai, elevenlabs, recaptcha)
+;; This also allows localhost services
+(allow network-outbound (remote tcp))
+
+;; Subprocesses are fine
+(allow process-fork)
+
+;; General network
+(system-network)
+
+;; DNS
+(allow network-outbound (literal "/private/var/run/mDNSResponder"))
+ 
+;; This is a network server, it binds and accepts connections
+(allow network-bind network-inbound (local tcp))
+
+;; REPLs often want to manipulate the terminal
+(let ((term (param "TTY")))
+  (when term
+    (allow file-read* file-write* file-ioctl (literal term))
+    (allow file-read* (literal "/dev")) ;; for IO.ttyname (ie, $stdin.ttyname)
+    ))
+
+;; Rubygems wants to consult the local gem directory
+(allow file-read* (home-subpath "/.gem"))
+
+;; Bundler has state
+(allow file-read* (home-subpath "/.bundle/config"))
+(allow file* (home-subpath "/.bundle/cache"))
+
+;; Bundix has state
+(allow file* (home-subpath "/.cache/bundix"))
+
+;; Bundix uses nix to prefetch
+(allow network-outbound (literal "/nix/var/nix/daemon-socket/socket"))
+
+;; IRB has state
+(allow file-read* (home-literal "/.irbrc"))
+(allow file* (home-literal "/.irb_history"))
+
+;; Pry has state
+(allow file-read* (home-literal "/.pryrc"))
+(allow file* (home-literal "/.pry_history"))
+
+;; Ruby Debugger has state
+(allow file* (home-literal "/.rdbg_history"))
+
+;; Reline uses ~/.inputrc
+(allow file-read* (home-literal "/.inputrc"))
+
+;; resolve.rb requires reading from /etc/resolv.conf, which is
+;; actually a symlink to /private/var/run/resolv.conf
+(allow file-read*
+  (literal "/private/var/run/resolv.conf"))
+
+;; fsevents_watch wants to talk to disk arbitration
+(allow mach-lookup
+  (global-name "com.apple.DiskArbitration.diskarbitrationd"))
+
+;; connect to postgres over local socket
+(allow network-outbound (subpath "/private/tmp"))
+
+;; Turbotest binds a socket in the project directory
+(allow network-bind network-inbound network-outbound
+  (subpath (param "SOURCE_ROOT")))

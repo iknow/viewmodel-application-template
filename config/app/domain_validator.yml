@@ -1,0 +1,19 @@
+---
+development: &development
+  enabled:    false
+  api_host:   api.usercheck.com
+  api_port:   443
+  api_scheme: https
+
+test:
+  <<: *development
+  enabled: false
+
+production:
+  <<: *development
+  enabled: true
+  api_key: <%= ENV['USERCHECK_API_KEY'] %>
+
+staging:
+  <<: *development
+  enabled: true

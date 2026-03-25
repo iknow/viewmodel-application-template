@@ -31,6 +31,49 @@ module AwsHelper
     }.merge(overrides)
   end
 
+  # AWS response stubbing that simulates accepting uploads to specific S3
+  # paths that can then be re-downloaded returning the same body.
+  def simulated_uploads_aws_responses
+    uploaded_bodies = {}
+    {
+      put_object: ->(context) {
+        body_stream = context.http_request.body.instance_variable_get(:@io).to_io
+        pos = body_stream.pos
+        body_stream.rewind
+        body = body_stream.read
+        body_stream.seek(pos, IO::SEEK_SET)
+
+        key = context.http_request.endpoint
+        uploaded_bodies[key] = body
+        {
+          status_code: 200,
+          headers: { 'ETag' => Digest::MD5.hexdigest(body) },
+          body: '',
+        }
+      },
+      get_object: ->(context) {
+        key = context.http_request.endpoint
+        if (body = uploaded_bodies[key])
+          etag = Digest::MD5.hexdigest(body)
+          length = body.length
+          { status_code: 200, headers: { 'ETag' => etag, 'content-length' => length }, body: }
+        else
+          { status_code: 404, headers: {}, body: '' }
+        end
+      },
+      head_object: ->(context) {
+        key = context.http_request.endpoint
+        if (body = uploaded_bodies[key])
+          etag = Digest::MD5.hexdigest(body)
+          length = body.length
+          { status_code: 200, headers: { 'ETag' => etag, 'content-length' => length }, body: '' }
+        else
+          { status_code: 404, headers: {}, body: '' }
+        end
+      },
+    }
+  end
+
   def aws_object_not_found_stub
     { status_code: 404, body: '', headers: {} }
   end

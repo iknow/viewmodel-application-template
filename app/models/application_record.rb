@@ -3,6 +3,8 @@
 class ApplicationRecord < ActiveRecord::Base
   self.abstract_class = true
 
+  include AutomaticValidations
+
   # Read a preloaded association without incurring the cost of constructing a CollectionProxy.
   def loaded_assoc(name)
     assoc = association(name)

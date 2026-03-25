@@ -4,17 +4,27 @@
 
 let
   inherit (pkgs) lib stdenv fetchpatch;
+
   nix-utils = pkgs.fetchFromGitHub {
     owner = "iknow";
     repo = "nix-utils";
-    rev = "c13c7a23836c8705452f051d19fc4dff05533b53";
-    sha256 = "0ax7hld5jf132ksdasp80z34dlv75ir0ringzjs15mimrkw8zcac";
+    rev = "c0a85a6eac7cf88ca4c6f1ef5261a6f7f5a5f949";
+    sha256 = "sha256-WE7sYYQwMq7qCDlcF0noHwHX+sH5TVCv2ORHRDIlFRY=";
   };
+
+  darwinSandbox = import "${nix-utils}/sandbox/darwin" { inherit pkgs; };
 in
 
 rec {
   jemalloc450 = pkgs.callPackage ./jemalloc/jemalloc450.nix {};
-  bundler = pkgs.bundler.override { inherit ruby; };
+  bundler = (pkgs.bundler.override { inherit ruby; }).overrideAttrs (attrs: {
+    dontBuild = false;
+    patchFlags = "-p2";
+    patches = (attrs.patches or []) ++ [
+      ./bundler-home.patch
+    ];
+  });
+  bundlerEnv = pkgs.bundlerEnv.override { inherit ruby bundler; };
   bundix = (pkgs.bundix.override {
     inherit bundler;
   }).overrideAttrs (attrs: {
@@ -31,7 +41,7 @@ rec {
     ];
   });
 
-  ruby = (pkgs.ruby_3_2.override {
+  ruby = (pkgs.ruby_3_4.override {
     inherit bundler bundix;
     jemalloc = jemalloc450;
     jemallocSupport = isRelease;
@@ -53,7 +63,7 @@ rec {
     disallowedRequisites = attrs.disallowedRequisites ++ [ stdenv.cc.cc ];
   });
 
-  postgresql = pkgs.postgresql_14;
+  postgresql = pkgs.postgresql_17;
   opensearch = pkgs.opensearch;
 
   psql = stdenv.mkDerivation {
@@ -84,4 +94,24 @@ rec {
   };
 
   ociTools = pkgs.callPackage "${nix-utils}/oci" {};
+
+    waitfor = pkgs.callPackage ./waitfor.nix {};
+
+  cloudflare-sandbox = pkgs.callPackage ./cloudflare-sandbox.nix {};
+  sandbox-dlopen-stub = pkgs.callPackage ./sandbox-dlopen-stub {};
+  sandbox-gmtime-stub = pkgs.callPackage ./sandbox-gmtime-stub {};
+  sandboxed-ffmpeg = pkgs.callPackage ./sandboxed-ffmpeg.nix { inherit cloudflare-sandbox sandbox-dlopen-stub sandbox-gmtime-stub; };
+
+  sandbox = package: options:
+    let
+      options' = options // {
+        profile = options.profile or ./sandbox-profiles/backend.sb;
+        sourceRoot = ./..;
+      };
+    in
+      if stdenv.isDarwin then
+        darwinSandbox package options'
+      else
+        package;
+
 }

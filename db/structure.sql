@@ -1,6 +1,12 @@
+\restrict dDa2MTddE5QPtdCnBxIrESf9pcyjhCxbTVlL3dmkVwzAAs2mv6L9wQZfKKdxWoq
+
+-- Dumped from database version 17.9
+-- Dumped by pg_dump version 17.9
+
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -34,18 +40,24 @@ CREATE TYPE public.ability AS ENUM (
 
 
 --
+-- Name: background_job_status; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.background_job_status AS ENUM (
+    'waiting',
+    'active',
+    'complete',
+    'failed'
+);
+
+
+--
 -- Name: language; Type: TYPE; Schema: public; Owner: -
 --
 
 CREATE TYPE public.language AS ENUM (
     'en',
-    'ja',
-    'es',
-    'de',
-    'fr',
-    'ko',
-    'zh-Hans',
-    'zh-Hant'
+    'it'
 );
 
 
@@ -71,6 +83,50 @@ CREATE TABLE public.abilities (
 CREATE TABLE public.ar_internal_metadata (
     key character varying NOT NULL,
     value character varying,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: background_job_progresses; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.background_job_progresses (
+    id uuid DEFAULT public.uuid_generate_v1mc() NOT NULL,
+    job_class character varying NOT NULL,
+    model_id uuid,
+    model_type character varying,
+    owner_id uuid NOT NULL,
+    owner_type character varying NOT NULL,
+    status_id public.background_job_status DEFAULT 'waiting'::public.background_job_status NOT NULL,
+    progress integer DEFAULT 0 NOT NULL,
+    result jsonb,
+    error_view jsonb,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: background_job_statuses; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.background_job_statuses (
+    id public.background_job_status NOT NULL,
+    name character varying NOT NULL,
+    CONSTRAINT background_job_statuses_enum_matches_constant CHECK (((id)::text = (name)::text))
+);
+
+
+--
+-- Name: blocked_email_domains; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.blocked_email_domains (
+    id uuid DEFAULT public.uuid_generate_v1mc() NOT NULL,
+    name character varying NOT NULL,
+    automatic boolean DEFAULT false NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL
 );
@@ -199,6 +255,7 @@ CREATE TABLE public.schema_migrations (
 CREATE TABLE public.users (
     id uuid DEFAULT public.uuid_generate_v1mc() NOT NULL,
     email character varying NOT NULL,
+    name character varying,
     interface_language_id public.language NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL
@@ -219,6 +276,30 @@ ALTER TABLE ONLY public.abilities
 
 ALTER TABLE ONLY public.ar_internal_metadata
     ADD CONSTRAINT ar_internal_metadata_pkey PRIMARY KEY (key);
+
+
+--
+-- Name: background_job_progresses background_job_progresses_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.background_job_progresses
+    ADD CONSTRAINT background_job_progresses_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: background_job_statuses background_job_statuses_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.background_job_statuses
+    ADD CONSTRAINT background_job_statuses_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: blocked_email_domains blocked_email_domains_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blocked_email_domains
+    ADD CONSTRAINT blocked_email_domains_pkey PRIMARY KEY (id);
 
 
 --
@@ -286,10 +367,38 @@ ALTER TABLE ONLY public.users
 
 
 --
+-- Name: background_job_progresses_unique_active_job; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX background_job_progresses_unique_active_job ON public.background_job_progresses USING btree (job_class, model_id, model_type) WHERE ((status_id = 'active'::public.background_job_status) AND (model_id IS NOT NULL));
+
+
+--
 -- Name: index_abilities_on_name; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX index_abilities_on_name ON public.abilities USING btree (name);
+
+
+--
+-- Name: index_background_job_progresses_on_status_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_background_job_progresses_on_status_id ON public.background_job_progresses USING btree (status_id);
+
+
+--
+-- Name: index_background_job_statuses_on_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_background_job_statuses_on_name ON public.background_job_statuses USING btree (name);
+
+
+--
+-- Name: index_blocked_email_domains_on_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_blocked_email_domains_on_name ON public.blocked_email_domains USING btree (name);
 
 
 --
@@ -398,6 +507,14 @@ CREATE INDEX index_users_on_interface_language_id ON public.users USING btree (i
 
 
 --
+-- Name: background_job_progresses fk_rails_3254d047e5; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.background_job_progresses
+    ADD CONSTRAINT fk_rails_3254d047e5 FOREIGN KEY (status_id) REFERENCES public.background_job_statuses(id);
+
+
+--
 -- Name: users fk_rails_9f605ef1f6; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -409,9 +526,13 @@ ALTER TABLE ONLY public.users
 -- PostgreSQL database dump complete
 --
 
+\unrestrict dDa2MTddE5QPtdCnBxIrESf9pcyjhCxbTVlL3dmkVwzAAs2mv6L9wQZfKKdxWoq
+
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260325124923'),
+('20260325124304'),
 ('20240102144348'),
 ('20240102144347'),
 ('20240102144346'),

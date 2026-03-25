@@ -6,6 +6,7 @@
 #
 #  id                    :uuid             not null, primary key
 #  email                 :string           not null
+#  name                  :string
 #  interface_language_id :enum             not null, indexed
 #  created_at            :datetime         not null
 #  updated_at            :datetime         not null
@@ -21,6 +22,7 @@
 FactoryBot.define do
   factory :user do
     sequence(:email) { |n| "user#{n}@example.com" }
+    sequence(:name) { |n| "user #{n}" }
     interface_language { Language::EN }
   end
 end

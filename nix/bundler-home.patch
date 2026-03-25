@@ -1,0 +1,27 @@
+From e34243f5ef8fd8a9986e49dc7d56ebf7ff286f7a Mon Sep 17 00:00:00 2001
+From: Andrew Childs <andrew.childs@bibo.com.ph>
+Date: Mon, 6 Oct 2025 21:27:08 +0900
+Subject: [PATCH] user_home: skip writability checks
+
+---
+ bundler/lib/bundler.rb | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/bundler/lib/bundler.rb b/bundler/lib/bundler.rb
+index eea3b0cf17..077203f0b5 100644
+--- a/bundler/lib/bundler.rb
++++ b/bundler/lib/bundler.rb
+@@ -268,8 +268,8 @@ def user_home
+           "Your home directory is not set."
+         elsif !File.directory?(home)
+           "`#{home}` is not a directory."
+-        elsif !File.writable?(home) && (!File.directory?(bundle_home) || !File.writable?(bundle_home))
+-          "`#{home}` is not writable."
++        elsif !File.directory?(bundle_home)
++          "`#{bundle_home}` is not a directory."
+         end
+ 
+         if warning
+-- 
+2.51.0
+

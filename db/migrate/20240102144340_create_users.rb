@@ -8,6 +8,7 @@ class CreateUsers < ActiveRecord::Migration[7.0]
 
     create_table :users, id: :uuid, default: 'uuid_generate_v1mc()' do |t|
       t.string :email, unique: true, null: false
+      t.string :name
       t.column :interface_language_id, :language, null: false, index: true
       t.foreign_key :languages, column: :interface_language_id
       t.timestamps

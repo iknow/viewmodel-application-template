@@ -3,6 +3,14 @@
 module ConstrainedTimestamps
   extend ActiveSupport::Concern
 
+  class_methods do
+    def timestamp_attributes(*attributes)
+      attributes = [:created_at, :updated_at] if attributes.empty?
+      attribute :created_at, format: ParamSerializers::AccurateTime if attributes.include?(:created_at)
+      attribute :updated_at, format: ParamSerializers::AccurateTime if attributes.include?(:updated_at)
+    end
+  end
+
   # Attempting to set updated_at to anything other than the existing value will
   # cause it to be marked as changed and explicitly bumped to the current time.
   def deserialize_updated_at(value, references:, deserialize_context:)
@@ -30,7 +38,7 @@ module ConstrainedTimestamps
 
   def _deserialize_timestamp(attr, value)
     ParamSerializers::AccurateTime.load(value)
-  rescue IknowParams::Serializer::LoadError => e
+  rescue ParamSerializers::LoadError => e
     reason = "could not be deserialized because #{e.message}"
     raise ViewModel::DeserializationError::Validation.new(attr, reason, {}, blame_reference)
   end

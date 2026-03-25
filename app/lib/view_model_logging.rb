@@ -1,10 +1,6 @@
 # frozen_string_literal: true
 
 class ViewModelLogging
-  # In some circumstances error views may contain sensitive information. Provide
-  # a list of keys to keep out of the Rails log.
-  ERROR_LOG_FILTER = ['meta.password'].freeze
-
   def self.log_error(error)
     error_view =
       if error.is_a?(ViewModel::AbstractError)
@@ -27,11 +23,34 @@ class ViewModelLogging
       exception_view['backtrace'] = Rails.backtrace_cleaner.clean(exception.backtrace)
     end
 
-    filter = ActiveSupport::ParameterFilter.new(ERROR_LOG_FILTER)
-
-    message = +"Rendered #{status} error '#{exception.class.name}':\n"
-    message << filter.filter(view).to_yaml
+    message = "Rendered #{status} error '#{exception.class.name}':\n"
+    message << filter_error_context(view).to_yaml
 
     Rails.logger.debug(message)
+  end
+
+  # Filter an error context structure that will be logged (or Honeybadgered)
+  # using the global privacy filter parameters, which are a subset of the Rails
+  # filter parameters. See config/initializers/filter_parameter_logging.rb for
+  # details.
+  def self.filter_error_context(hash)
+    filter = ActiveSupport::ParameterFilter.new(GLOBAL_PRIVACY_FILTER_PARAMETERS)
+    filter.filter(hash)
+  end
+
+  # Filter the query parameters of a URL using the configured Rails parameter filters
+  def self.filter_url_query(url)
+    uri = URI.parse(url)
+
+    return url unless uri.query
+
+    params = Rack::Utils.parse_nested_query(uri.query)
+
+    filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
+    filtered_params = filter.filter(params)
+
+    uri.query = Rack::Utils.build_nested_query(filtered_params)
+
+    uri.to_s
   end
 end

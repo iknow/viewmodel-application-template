@@ -14,11 +14,11 @@ class TypeValidator < ActiveModel::Validator
 
     if value.nil?
       unless allow_nil
-        record.errors.add(attr, "#{prefix} not nil")
+        record.errors.add(attr, :invalid_type, message: "#{prefix} not nil")
       end
     elsif (type = options[:is_a])
       unless value.is_a?(type)
-        record.errors.add(attr, "#{prefix} a #{type.name}")
+        record.errors.add(attr, :invalid_type, message: "#{prefix} a #{type.name}")
       end
     elsif (child_spec = options[:array_of])
       if value.is_a?(Array)
@@ -26,7 +26,7 @@ class TypeValidator < ActiveModel::Validator
           validate_type_spec(record, attr, child_spec, child, prefix: "#{prefix} an array whose elements are all")
         end
       else
-        record.errors.add(attr, "#{prefix} an array")
+        record.errors.add(attr, :invalid_type, message: "#{prefix} an array")
       end
     elsif (key_child_spec = options[:hash_from])
       value_child_spec = options[:to]
@@ -38,7 +38,7 @@ class TypeValidator < ActiveModel::Validator
           end
         end
       else
-        record.errors.add(attr, "#{prefix} a hash")
+        record.errors.add(attr, :invalid_type, message: "#{prefix} a hash")
       end
     else
       raise RuntimeError.new('TypeValidator requires either :is_a or :array_of at each level')

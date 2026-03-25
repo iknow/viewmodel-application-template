@@ -3,7 +3,8 @@
 , isRelease ? false }:
 
 let
-  inherit (import ./nix/dependencies.nix { inherit pkgs isRelease; }) bundler bundix ruby postgresql opensearch psql ociTools;
+  dependencies = import ./nix/dependencies.nix { inherit pkgs isRelease; };
+  inherit (dependencies) sandbox bundler bundix ruby postgresql opensearch psql ociTools;
 
   inherit (pkgs) lib callPackage writeShellScript makeWrapper runCommand buildEnv writeShellScriptBin;
 
@@ -40,5 +41,5 @@ rec {
     ${ruby}/bin/ruby ${./nix/generate-pin.rb} > nix/pinned-nixpkgs.json
   '';
 
-  inherit ruby postgresql psql bundix ociTools;
+  inherit ruby postgresql psql bundix ociTools sandbox;
 }

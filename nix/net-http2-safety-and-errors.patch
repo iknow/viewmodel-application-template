@@ -1,0 +1,182 @@
+commit cb2ac981e77341de8b231e5724b9cf34fa37eeb9
+Author: Andrew Childs <andrew.childs@bibo.com.ph>
+Date:   Thu Jan 18 20:20:43 2024 +0900
+
+    Eagerly terminate streams on connection close or errors
+    
+    While I'm here, fix some unsafe concurrent modifications.
+
+diff --git a/lib/net-http2/client.rb b/lib/net-http2/client.rb
+index 35a8896..76bc7df 100644
+--- a/lib/net-http2/client.rb
++++ b/lib/net-http2/client.rb
+@@ -9,6 +9,7 @@ module NetHttp2
+   PROXY_SETTINGS_KEYS = [:proxy_addr, :proxy_port, :proxy_user, :proxy_pass]
+ 
+   AsyncRequestTimeout = Class.new(StandardError)
++  SocketClosedError = Class.new(StandardError)
+ 
+   class Client
+ 
+@@ -28,18 +29,19 @@ module NetHttp2
+       @is_ssl = (@uri.scheme == 'https')
+ 
+       @mutex = Mutex.new
+-      init_vars
++      reset
+     end
+ 
+     def call(method, path, options={})
+       request = prepare_request(method, path, options)
+       ensure_open
+-      new_stream.call_with request
++      stream = new_stream request
++      stream.call_with request
+     end
+ 
+     def call_async(request)
+       ensure_open
+-      stream = new_monitored_stream_for request
++      stream = new_stream request
+       stream.async_call_with request
+     end
+ 
+@@ -53,7 +55,7 @@ module NetHttp2
+ 
+     def close
+       exit_thread(@socket_thread)
+-      init_vars
++      reset(error: SocketClosedError.new)
+     end
+ 
+     def join(timeout: nil)
+@@ -74,10 +76,16 @@ module NetHttp2
+ 
+     private
+ 
+-    def init_vars
++    def reset(error: nil)
+       @mutex.synchronize do
+         @socket.close if @socket && !@socket.closed?
+ 
++        if error && @streams
++          @streams.each do |k, v|
++            v.force_close(error)
++          end
++        end
++
+         @h2              = nil
+         @socket          = nil
+         @socket_thread   = nil
+@@ -86,20 +94,24 @@ module NetHttp2
+       end
+     end
+ 
+-    def new_stream
+-      @mutex.synchronize { NetHttp2::Stream.new(h2_stream: h2.new_stream) }
+-    rescue StandardError => e
+-      close
+-      raise e
+-    end
++    def new_stream(request)
++      stream = nil
+ 
+-    def new_monitored_stream_for(request)
+-      stream = new_stream
++      @mutex.synchronize do
++        stream = NetHttp2::Stream.new(h2_stream: h2.new_stream)
++        @streams[stream.id] = stream
++      end
+ 
+-      @streams[stream.id] = true
+-      request.on(:close) { @streams.delete(stream.id) }
++      request.on(:close) do
++        @mutex.synchronize do
++          @streams.delete(stream.id)
++        end
++      end
+ 
+       stream
++    rescue StandardError => e
++      close
++      raise e
+     end
+ 
+     def ensure_open
+@@ -115,12 +127,13 @@ module NetHttp2
+ 
+           rescue EOFError
+             # socket closed
+-            init_vars
+-            callback_or_raise SocketError.new('Socket was remotely closed')
++            error = SocketError.new('Socket was remotely closed')
++            reset(error: error)
++            callback_or_raise error
+ 
+           rescue Exception => e
+             # error on socket
+-            init_vars
++            reset(error: e)
+             callback_or_raise e
+           end
+         end.tap { |t| t.abort_on_exception = true }
+diff --git a/lib/net-http2/stream.rb b/lib/net-http2/stream.rb
+index c9264a9..34b1632 100644
+--- a/lib/net-http2/stream.rb
++++ b/lib/net-http2/stream.rb
+@@ -10,6 +10,7 @@ module NetHttp2
+       @async     = false
+       @completed = false
+       @mutex     = Mutex.new
++      @error     = nil
+       @cv        = ConditionVariable.new
+ 
+       listen_for_headers
+@@ -42,6 +43,13 @@ module NetHttp2
+       @async
+     end
+ 
++    def force_close(error = nil)
++      @mutex.synchronize do
++        @error = error
++        @cv.signal
++      end
++    end
++
+     private
+ 
+     def listen_for_headers
+@@ -68,12 +76,14 @@ module NetHttp2
+ 
+     def listen_for_close
+       @h2_stream.on(:close) do |data|
+-        @completed = true
+-
+         if async?
++          @completed = true
+           @request.emit(:close, data)
+         else
+-          @mutex.synchronize { @cv.signal }
++          @mutex.synchronize do
++            @completed = true
++            @cv.signal
++          end
+         end
+       end
+     end
+@@ -97,7 +107,14 @@ module NetHttp2
+     end
+ 
+     def wait_for_completed
+-      @mutex.synchronize { @cv.wait(@mutex, @request.timeout) }
++      @mutex.synchronize do
++        start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
++        while @error.nil? && !@completed &&
++              (remaining_timeout = (@request.timeout - (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start))) > 0
++          @cv.wait(@mutex, remaining_timeout)
++        end
++        raise @error if @error
++      end
+     end
+   end
+ end
