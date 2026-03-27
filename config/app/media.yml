@@ -1,0 +1,14 @@
+---
+development: &development
+  default_region: ap-northeast-1
+  default_bucket_name: example-bucket-dev
+
+test: *development
+
+production:
+  default_region: ap-northeast-1
+  default_bucket_name: example-bucket
+
+staging:
+  default_region: ap-northeast-1
+  default_bucket_name: example-bucket-testing

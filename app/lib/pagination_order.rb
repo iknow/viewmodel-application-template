@@ -29,12 +29,12 @@ PaginationOrder = Value.new(:name, :default_direction, :scope, :search, aliases:
     raise IncompatibleParameters.new(filters: [], page: self, strategy: :search) unless can_search?
   end
 
-  def scope_for(direction, filter_values)
-    scope.call(direction, filter_values)
+  def scope_for(direction, filter_values, controller: nil)
+    controller.instance_exec(direction, filter_values, &scope)
   end
 
-  def search_for(direction)
-    search.call(direction)
+  def search_for(direction, filter_values, controller: nil)
+    controller.instance_exec(direction, filter_values, &search)
   end
 
   def names

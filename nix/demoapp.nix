@@ -211,13 +211,6 @@ let
         })
       ];
     };
-
-    annotate = attrs: {
-      dontBuild = false;
-      patches = (attrs.patches or []) ++ [
-        ./annotate-comments.patch
-      ];
-    };
   };
 
   bundleEnv = bundlerEnv {

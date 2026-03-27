@@ -17,7 +17,7 @@
 # `except`:   Array of controller actions that the filter is excluded from.
 no_default = Object.new
 Filter = Value.new(:name,
-                   format:        IknowParams::Serializer::String,
+                   format:        ParamSerializers::String,
                    scope:         nil,
                    scope_joins:   nil,
                    search:        nil,
@@ -29,7 +29,7 @@ Filter = Value.new(:name,
                    permit_scope:  nil,
                    permit_search: nil,
                   ) do
-  NO_DEFAULT = no_default
+  self::NO_DEFAULT = no_default
 
   @builder = KeywordBuilder.create(self, constructor: :with)
   singleton_class.delegate :build!, to: :@builder
@@ -52,12 +52,14 @@ Filter = Value.new(:name,
     permit_scope.nil? || permit_scope.call(value)
   end
 
-  def scope_for(value, filters)
-    scope.call(value, filters)
+  def scope_for(value, filters, controller: self)
+    controller.instance_exec(value, filters, &scope)
   end
 
-  def scope_joins_for(value, filters)
-    scope_joins.call(value, filters) if scope_joins
+  def scope_joins_for(value, filters, controller: nil)
+    return nil unless scope_joins
+
+    controller.instance_exec(value, filters, &scope_joins)
   end
 
   def can_search?(value)
@@ -66,8 +68,8 @@ Filter = Value.new(:name,
     permit_search.nil? || permit_search.call(value)
   end
 
-  def search_for(value)
-    search.call(value)
+  def search_for(value, filters, controller: nil)
+    controller.instance_exec(value, filters, &search)
   end
 
   def valid_for_action?(action_name)
@@ -81,7 +83,7 @@ Filter = Value.new(:name,
   end
 
   def default?
-    default != NO_DEFAULT
+    default != Filter::NO_DEFAULT
   end
 
   def default_value(filters)

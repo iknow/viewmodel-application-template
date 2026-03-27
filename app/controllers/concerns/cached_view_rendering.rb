@@ -5,7 +5,7 @@
 module CachedViewRendering
   extend ActiveSupport::Concern
 
-  def prerender_viewmodels_from_cache(views, serialize_context:)
+  def prerender_viewmodels_from_cache(views, serialize_context:, locked: false)
     if views.blank?
       return prerender_viewmodel(views, serialize_context:)
     end
@@ -21,7 +21,7 @@ module CachedViewRendering
       end
 
     viewmodel_class = Array.wrap(views).first.class
-    json_views, json_refs = viewmodel_class.serialize_from_cache(views, migration_versions: initial_migrations, serialize_context:)
+    json_views, json_refs = viewmodel_class.serialize_from_cache(views, migration_versions: initial_migrations, serialize_context:, locked:)
 
     # If the migration could not be run in isolation, it needs to be run on the
     # complete result. This is definitely a slow path, because this process
@@ -37,7 +37,17 @@ module CachedViewRendering
       json_refs = parsed_references.transform_values { |hash| Oj.dump(hash, mode: :strict) }
     end
 
-    prerender_json_view(json_views, json_references: json_refs)
+    prerender_json_view(json_views, json_references: json_refs) do |json|
+      meta = json.attributes!['meta']
+      if migration_versions.present? && meta.present?
+        # Down-migrate the metadata in isolation. This means that migrations on
+        # metadata types that manipulate references can't be used in the
+        # presence of cached view rendering. This is a limitation, but not one
+        # that is likely to be regularly encountered.
+        migrator = ViewModel::DownMigrator.new(migration_versions)
+        migrator.migrate!({ 'meta' => meta })
+      end
+    end
   end
 
   def render_viewmodels_from_cache(views, status: nil, serialize_context:)

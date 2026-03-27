@@ -9,6 +9,9 @@ class ElasticsearchConfig < LoadableConfig
   attribute :host, type: :string
   attribute :prefix, type: :string, optional: true
   attribute :use_aws_authentication, type: :boolean
+  attribute :username, type: :string, optional: true
+  attribute :password, type: :string, optional: true
+  attribute :ca_cert, type: :string, optional: true
   attribute :bulk_size, type: :integer, optional: true
   attribute :connect_timeout, type: :number
   attribute :request_timeout, type: :number
@@ -30,8 +33,14 @@ class ElasticsearchConfig < LoadableConfig
 
     settings[:prefix] = prefix unless prefix.nil?
 
+    if ca_cert.present?
+      settings[:transport_options][:ssl] = { cert_store: ca_cert_store }
+    end
+
+    settings[:transport_options][:headers] = { content_type: 'application/json' }
+
+    # AWS Authentication always takes precedence over Basic Auth
     if use_aws_authentication?
-      settings[:transport_options][:headers] = { content_type: 'application/json' }
       settings[:transport_options][:proc] = ->(f) do
         f.request(
           :aws_sigv4,
@@ -41,9 +50,23 @@ class ElasticsearchConfig < LoadableConfig
           secret_access_key: AwsConfig.secret_access_key,
         )
       end
+    elsif username.present? && password.present?
+      settings[:transport_options][:proc] = ->(f) do
+        f.request :basic_auth, username, password
+      end
     end
 
     settings
+  end
+
+  def ca_cert_store
+    @ca_cert_store ||= begin
+      require 'openssl'
+      store = OpenSSL::X509::Store.new
+      cert = OpenSSL::X509::Certificate.new(ca_cert)
+      store.add_cert(cert)
+      store
+    end
   end
 
   class << self

@@ -41,7 +41,7 @@ rec {
     ];
   });
 
-  ruby = (pkgs.ruby_3_4.override {
+  ruby = (pkgs.ruby_4_0.override {
     inherit bundler bundix;
     jemalloc = jemalloc450;
     jemallocSupport = isRelease;

@@ -7,9 +7,9 @@
 #  id                    :uuid             not null, primary key
 #  email                 :string           not null
 #  name                  :string
-#  interface_language_id :enum             not null, indexed
 #  created_at            :datetime         not null
 #  updated_at            :datetime         not null
+#  interface_language_id :enum             not null, indexed
 #
 # Indexes
 #

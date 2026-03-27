@@ -18,8 +18,8 @@
 #   parameter. The value of this will not be used, but is required for Rack to
 #   treat the data as an uploaded file.
 class Middleware::MultipartUpload
-  UPLOADED_FILES_PARAM = '__multipart_uploads'
-  FORM_ROOT_CID        = 'viewmodel-json-root'
+  UPLOADED_FILES_ENV = 'eikaiwa-content.uploaded-files'
+  FORM_ROOT_CID      = 'viewmodel-json-root'
 
   class MissingRoot < ViewModel::Error
     status 400
@@ -89,10 +89,10 @@ class Middleware::MultipartUpload
       root_body_id = type_params['start']
       raise MissingRoot.new unless root_body_id
 
-      env['rack.request.form_hash'] = swizzle_bodies(params, root_body_id)
+      swizzle_bodies!(env, params, root_body_id)
 
-    elsif type == 'multipart/form-data' && params.has_key?(FORM_ROOT_CID)
-      env['rack.request.form_hash'] = swizzle_bodies(params, FORM_ROOT_CID)
+    elsif type == 'multipart/form-data' && params.any? { |key, _value| key == FORM_ROOT_CID }
+      swizzle_bodies!(env, params, FORM_ROOT_CID)
     end
   end
 
@@ -122,7 +122,7 @@ class Middleware::MultipartUpload
     nil
   end
 
-  def swizzle_bodies(params, root_body_id)
+  def swizzle_bodies!(env, params, root_body_id)
     root_body = params.delete(root_body_id)
     raise MissingRoot.new unless root_body
 
@@ -130,6 +130,10 @@ class Middleware::MultipartUpload
       unless value.is_a?(Hash)
         raise NonFileUpload.new(key)
       end
+    end
+
+    params.transform_values! do |value|
+      ActionDispatch::Http::UploadedFile.new(value)
     end
 
     json_body =
@@ -143,15 +147,8 @@ class Middleware::MultipartUpload
         root_body
       end
 
-    parsed_root =
-      begin
-        ActiveSupport::JSON.decode(json_body)
-      rescue ActiveSupport::JSON.parse_error => e
-        raise Middleware::JsonErrorHandler::ParseError.new(e.message)
-      end
-
-    parsed_root[UPLOADED_FILES_PARAM] = params
-
-    parsed_root
+    env[UPLOADED_FILES_ENV] = params
+    env['rack.input'] = StringIO.new(json_body)
+    env['CONTENT_TYPE'] = 'application/json'
   end
 end

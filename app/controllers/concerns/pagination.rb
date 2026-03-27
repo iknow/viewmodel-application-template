@@ -44,6 +44,10 @@ module Pagination
       pagination_config.max_page_size = size
     end
 
+    def max_background_page_size(size)
+      pagination_config.max_background_page_size = size
+    end
+
     def default_pagination_order(name)
       pagination_config.default_pagination_order = name
     end
@@ -79,10 +83,14 @@ module Pagination
     page_size  = parse_param(:page_size, default: config.default_page_size, with: ParamSerializers::SignedInteger.new(negative: false))
     order_name = parse_string_param(:order, default: default_pagination_order)
     direction  = parse_param(:direction, with: ParamSerializers::SearchDirection, default: nil)
+    # If paginating, we allow the client to request the total count to be computed
+    compute_total_count = parse_boolean_param(:compute_total_count, default: false) && page_size > 0
 
     pagination_order = config.pagination_order(order_name.to_sym)
     direction ||= pagination_order.default_direction
 
-    config.new_page(order_name, pagination_order, direction, start, page_size)
+    background = is_a?(BackgroundRendering) && backgrounded?
+
+    config.new_page(order_name, pagination_order, direction, start, page_size, compute_total_count, background:)
   end
 end

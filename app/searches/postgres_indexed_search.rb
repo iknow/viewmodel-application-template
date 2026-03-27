@@ -7,19 +7,20 @@ class PostgresIndexedSearch < ApplicationSearch
     end
   end
 
-  def initialize(query_string, translation_language: nil, page:, filters:, filter_only: false)
+  def initialize(query_string, translation_language: nil, page:, filters:, controller:, filter_only: false)
     super()
 
     if filter_only
       raise ArgumentError.new('filter_only is redundant with PostgresIndexedSearch')
     end
 
+    @controller = controller
     @supplementary_fields = []
     @translation_languages = [translation_language] if translation_language
 
     query = build_query(query_string)
     query = filter_query(query, filters)
-    query = paginate_query(query, page)
+    query = paginate_query(query, page, filters)
     query = select_fields(query)
     @query = query
   end
@@ -86,12 +87,13 @@ class PostgresIndexedSearch < ApplicationSearch
   def filter_query(query, filters)
     return query unless filters
 
-    query.merge(filters.scope)
+    query.merge(filters.scope(controller: @controller))
   end
 
   def paginate_query(query, page, filters)
     if page
-      query.merge(page.scope(filters))
+      scope = query.merge(page.ordering_scope(filters, controller: @controller))
+      page.pagination_scope(scope)
     else
       query.limit(MAX_UNPAGINATED_RESULTS)
     end

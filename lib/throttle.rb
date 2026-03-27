@@ -25,10 +25,15 @@ module Throttle
       Cache.instance
     end
 
-    # We decode, verify, and return the authentication JWT from the request
+    # We decode and verify the JWT from request, instead of using Doorkeeper.
+    # This can save us one RTT to the database
     def token_for(request)
-      # FIXME: No authentication is implemented in the app skeleton
-      return nil
+      methods = Doorkeeper.config.access_token_methods
+      token = Doorkeeper::OAuth::Token.from_request(request, *methods)
+      return nil if token.nil?
+
+      payload = DoorkeeperConfig.jwt_decode_token(token, verify_expiration: true)
+      payload[0] unless payload.nil?
     end
 
     def check_throttle(env)
@@ -38,6 +43,12 @@ module Throttle
       token = token_for(request)
       uid = token&.fetch('sub', nil)
       type = token&.fetch('type', nil)
+
+      # Whitelist backgrounded requests
+      if env[BackgroundRendering::BACKGROUNDED_REQUEST] == true
+        env['throttle.whitelisted'] = true
+        return nil
+      end
 
       # Whitelist check
       if ThrottleConfig.whitelisted?(path, ip, uid, type)

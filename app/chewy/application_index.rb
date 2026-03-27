@@ -7,13 +7,7 @@ module ApplicationIndex
   # Unspecified languages will use the "standard" analyzer.
   LANGUAGE_ANALYZERS = {
     Language::EN      => 'english',
-  #   Language::DE      => 'german',
-  #   Language::ES      => 'spanish',
-  #   Language::FR      => 'french',
-  #   Language::JA      => 'kuromoji',
-  #   Language::KO      => 'cjk',
-  #   Language::ZH_HANS => 'smartcn',
-  #   Language::ZH_HANT => 'smartcn',
+    Language::JA      => 'kuromoji',
   }.freeze
 
   EMAIL_ANALYZER_SETTINGS = {
@@ -37,11 +31,49 @@ module ApplicationIndex
     },
   }.freeze
 
-  AfterTransactionImporter = Struct.new(:index, :model_ids) do
+  # After commit, launches a background job to import the supplied models.
+  # Models may be supplied either as AR objects or as ids.
+  AfterTransactionImporter = Struct.new(:index, :models, :finalized) do
     include ViewModel::AfterTransactionRunner
 
+    def initialize(index, models)
+      super(index, models, false)
+    end
+
+    def add_models(new_models)
+      raise RuntimeError.new('Attempted to add models to a finalized AfterTransactionImporter') if finalized
+
+      models.concat(new_models)
+    end
+
+    def import!
+      model_ids = Set.new
+
+      models.each do |m|
+        id = case m
+             when String, Integer
+               m
+             when ActiveRecord::Base
+               raise ArgumentError.new("Unpersisted model: #{m.inspect}") unless m.id
+
+               m.id
+             else
+               raise ArgumentError.new("Unexpected non-model: #{m.inspect}")
+             end
+
+        model_ids << id
+      end
+
+      ElasticsearchImportJob.perform_later(index.name, model_ids.to_a)
+    end
+
     def after_commit
-      ElasticsearchImportJob.perform_later(index.name, model_ids)
+      self.finalized = true
+      import!
+    end
+
+    def after_rollback
+      self.finalized = true
     end
 
     def connection
@@ -74,7 +106,35 @@ module ApplicationIndex
       @view_class
     end
 
+    # Chewy by default reimports the entire index if given no models. This is a
+    # footgun we want no part of: we prefer that importing nothing will do
+    # nothing. However, we want to make the exception that if you're explicitly
+    # providing Chewy options (which we typically don't) then that's a sign that
+    # you want Chewy's exact behaviour -- even if those options are empty. This
+    # means that Chewy's rake tasks can safely use #import with the behaviour
+    # they expect of it.
+    def includes_no_models_and_options?(models)
+      return true if models.empty?
+      return true if models.all? { |m| m.is_a?(Array) && includes_no_models_and_options?(m) }
+
+      false
+    end
+
+    def import(*models)
+      if includes_no_models_and_options?(models)
+        # Additionally, we don't expect to hit this directly, because in all our
+        # actual use-cases we're using #import_later and/or #import_with_lock:
+        # log the unexpected event.
+        Honeybadger.notify("Skipping import of no models to index #{self.class.name}")
+        return
+      end
+
+      super
+    end
+
     def import_with_lock(*models)
+      return if includes_no_models_and_options?(models)
+
       model_class.transaction do
         # Chewy will always re-fetch the models, no advantage in loading them
         # here. Obtain locks in id order to avoid deadlock.
@@ -86,18 +146,49 @@ module ApplicationIndex
     end
 
     def import_later(*models)
-      model_ids = models.map do |m|
-        case m
-        when String
-          m
-        when ActiveRecord::Base
+      if models.last.is_a?(Hash)
+        # We don't support passing Chewy import options through to the background job
+        raise ArgumentError.new('Cannot import_later with a Chewy options hash')
+      end
+
+      return if includes_no_models_and_options?(models)
+
+      connection = self.model_class.connection
+
+      unless connection.transaction_open?
+        AfterTransactionImporter.new(self, models).import!
+        return
+      end
+
+      # To minimize holding references to models that might otherwise be
+      # collectable, eagerly convert AR models with ids to the id. Models
+      # without an id may yet gain one before the transaction is complete, so
+      # must be retained as an object.
+      models = models.map do |m|
+        if m.is_a?(ActiveRecord::Base) && m.id
           m.id
         else
-          raise ArgumentError.new("Unexpected non-model: #{m.inspect}")
+          m
         end
       end
 
-      AfterTransactionImporter.new(self, model_ids).add_to_transaction
+      # We want to collect the imports for a given index to be enqueued for
+      # import together at the end of the transaction, rather enqueuing each
+      # invocation as a separate ActiveJob. This implementation won't be optimal
+      # in the case of nested savepoint transactions, as each separate nested
+      # transaction will have a separate job.
+      transaction = connection.current_transaction
+      if transaction_importers.key?(transaction)
+        transaction_importers[transaction].add_models(models)
+      else
+        importer = AfterTransactionImporter.new(self, models)
+        importer.add_to_transaction
+        transaction_importers[transaction] = importer
+      end
+    end
+
+    def transaction_importers
+      @transaction_importers ||= ObjectSpace::WeakKeyMap.new
     end
 
     def define_raw_mapping(&block)
@@ -176,9 +267,27 @@ module ApplicationIndex
       {
         properties: Language.values.each_with_object({}) do |lang, h|
           next if lang == exclude
+
           h[lang.code] = yield(lang)
         end,
       }
+    end
+
+    # When an index can't be partitioned, but a single field can be in any
+    # language, which is known at index time. We don't want to use a single
+    # mapping with many `field` analysers, because analyzing and matching
+    # against the value in the wrong language would be actively negative (e.g.
+    # analyzing a Japanese string with a standard analyzer), so we use an object
+    # with many fields keyed by language. We also want the raw string as a
+    # keyword. When storing into an index, the string must be saved both as
+    # `raw` and as the corresponding language.
+    def arbitrary_language_string_mapping
+      mapping = multi_language_mapping do |language|
+        { type: 'text', analyzer: LANGUAGE_ANALYZERS.fetch(language, 'standard') }
+      end
+
+      mapping[:properties][:raw] = { type: 'keyword' }
+      mapping
     end
 
     # ElasticSearch mappings for a string in many languages

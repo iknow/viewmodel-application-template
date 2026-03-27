@@ -1,0 +1,7 @@
+---
+development: &development
+  transcoder_url: https://configuration.example.com/
+
+test: *development
+production: *development
+staging: *development

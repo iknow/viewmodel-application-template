@@ -19,7 +19,7 @@ module Filtering
       # Always permit filtering by id: this provides an equivalent of a bulk GET
       controller.request_filter(:id) do
         aliases [:ids]
-        format IknowParams::Serializer::ArrayOf.new(IknowParams::Serializer::UUID, allow_singleton: true)
+        format ParamSerializers::ArrayOf.new(ParamSerializers::UUID, allow_singleton: true, allow_empty: false)
 
         scope { |ids| controller.model_class.where(id: ids) }
 

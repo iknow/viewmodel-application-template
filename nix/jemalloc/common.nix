@@ -25,6 +25,9 @@ stdenv.mkDerivation rec {
     # Use volatile to workaround buffer overflow false positives
     # https://github.com/jemalloc/jemalloc/pull/2244
     ./gcc12-rallocx.patch
+    # Work around GCC 15 optimization
+    # https://github.com/jemalloc/jemalloc/issues/2823
+    ./0001-Disable-GCC-builtins-when-compiling-the-test-suite.patch
   ];
 
   # see the comment on stripPrefix

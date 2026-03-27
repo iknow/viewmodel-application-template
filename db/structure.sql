@@ -1,8 +1,3 @@
-\restrict dDa2MTddE5QPtdCnBxIrESf9pcyjhCxbTVlL3dmkVwzAAs2mv6L9wQZfKKdxWoq
-
--- Dumped from database version 17.9
--- Dumped by pg_dump version 17.9
-
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -35,7 +30,10 @@ COMMENT ON EXTENSION "uuid-ossp" IS 'generate universally unique identifiers (UU
 
 CREATE TYPE public.ability AS ENUM (
     'viewUsers',
-    'editUsers'
+    'editUsers',
+    'makeBackgroundRequest',
+    'downloadCsv',
+    'editBlockedEmailDomains'
 );
 
 
@@ -57,7 +55,7 @@ CREATE TYPE public.background_job_status AS ENUM (
 
 CREATE TYPE public.language AS ENUM (
     'en',
-    'it'
+    'ja'
 );
 
 
@@ -240,6 +238,23 @@ CREATE TABLE public.languages (
 
 
 --
+-- Name: pending_s3_deletions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.pending_s3_deletions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    region character varying NOT NULL,
+    bucket_name character varying NOT NULL,
+    path character varying NOT NULL,
+    reason character varying,
+    dead boolean DEFAULT false NOT NULL,
+    retry_count integer DEFAULT 0 NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: schema_migrations; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -351,6 +366,14 @@ ALTER TABLE ONLY public.languages
 
 
 --
+-- Name: pending_s3_deletions pending_s3_deletions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pending_s3_deletions
+    ADD CONSTRAINT pending_s3_deletions_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -416,10 +439,10 @@ CREATE UNIQUE INDEX index_good_job_settings_on_key ON public.good_job_settings U
 
 
 --
--- Name: index_good_jobs_jobs_on_finished_at; Type: INDEX; Schema: public; Owner: -
+-- Name: index_good_jobs_jobs_on_finished_at_only; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_good_jobs_jobs_on_finished_at ON public.good_jobs USING btree (finished_at) WHERE ((retried_good_job_id IS NULL) AND (finished_at IS NOT NULL));
+CREATE INDEX index_good_jobs_jobs_on_finished_at_only ON public.good_jobs USING btree (finished_at) WHERE (finished_at IS NOT NULL);
 
 
 --
@@ -479,6 +502,13 @@ CREATE UNIQUE INDEX index_good_jobs_on_cron_key_and_cron_at_cond ON public.good_
 
 
 --
+-- Name: index_good_jobs_on_job_class; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_good_jobs_on_job_class ON public.good_jobs USING btree (job_class);
+
+
+--
 -- Name: index_good_jobs_on_queue_name_and_scheduled_at; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -497,6 +527,13 @@ CREATE INDEX index_good_jobs_on_scheduled_at ON public.good_jobs USING btree (sc
 --
 
 CREATE UNIQUE INDEX index_languages_on_code ON public.languages USING btree (code);
+
+
+--
+-- Name: index_pending_s3_deletions_on_updated_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_pending_s3_deletions_on_updated_at ON public.pending_s3_deletions USING btree (updated_at) WHERE (NOT dead);
 
 
 --
@@ -526,13 +563,18 @@ ALTER TABLE ONLY public.users
 -- PostgreSQL database dump complete
 --
 
-\unrestrict dDa2MTddE5QPtdCnBxIrESf9pcyjhCxbTVlL3dmkVwzAAs2mv6L9wQZfKKdxWoq
-
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260327105945'),
 ('20260325124923'),
 ('20260325124304'),
+('20260108100560'),
+('20260108100559'),
+('20260108100558'),
+('20260108072730'),
+('20260108072729'),
+('20260108072728'),
 ('20240102144348'),
 ('20240102144347'),
 ('20240102144346'),

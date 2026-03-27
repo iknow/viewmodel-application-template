@@ -10,7 +10,7 @@ module ChewyIndexHelper
   #
   # See https://github.com/rspec/rspec-support/commit/8c3a1bb9e198a816136c3dd891eebcbc600bc825#diff-f58e20f4536361cf86ea5f64662fb34eb9ef650ecc96d443bca0e8310dce84ab
   RSpec.shared_examples 'with search indexes' do |initial_search_indexes = {}, wrap_examples: true, **rspec_helper_indexes|
-    include ActiveJob::TestHelper
+    include UseActiveJobTestHelper
 
     let(:search_indexes) { initial_search_indexes.merge(rspec_helper_indexes) }
     let(:unique_indexes) { search_indexes.values.tap(&:flatten!).tap(&:uniq!) }
@@ -70,13 +70,13 @@ module ChewyIndexHelper
       end
     end
 
-    def create(type, *)
+    def create(type, ...)
       super.tap do |model|
         _import_to_index(type, model)
       end
     end
 
-    def create_list(type, *)
+    def create_list(type, ...)
       super.tap do |models|
         _import_to_index(type, models)
       end

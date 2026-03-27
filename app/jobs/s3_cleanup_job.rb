@@ -13,6 +13,18 @@ class S3CleanupJob < ApplicationJob
     warn_failed_cleanup(job, err)
   end
 
+  class AfterCommit
+    include ViewModel::AfterTransactionRunner
+
+    def initialize(region, bucket, path)
+      @region, @bucket, @path = region, bucket, path
+    end
+
+    def after_commit
+      S3CleanupJob.perform_later(@region, @bucket, @path, true)
+    end
+  end
+
   def perform(region, bucket, path, _committed)
     client = Upload.s3_client_class.new(region:, bucket_name: bucket)
     client.delete(path)
@@ -23,7 +35,6 @@ class S3CleanupJob < ApplicationJob
     type = committed ? 'original' : 'copied'
     action = committed ? 'commit' : 'rollback'
     message = "Upload from S3: failed to delete #{type} file after #{action}."
-
     context = {
       'message' => message,
       'error'   => err.message,

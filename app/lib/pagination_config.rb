@@ -3,12 +3,18 @@
 class PaginationConfig
   DEFAULT_DIRECTION = 'asc'
   DEFAULT_PAGE_SIZE = 100
+  # For now, we don't impose a max foreground-rendered page size limit for most
+  # controllers. We'll set one once the client has been updated to no longer
+  # request unlimited results.
+  DEFAULT_MAX_PAGE_SIZE = nil
+  DEFAULT_MAX_BACKGROUND_PAGE_SIZE = 50000
 
-  attr_accessor :default_page_size, :max_page_size
+  attr_accessor :default_page_size, :max_page_size, :max_background_page_size
 
   def initialize(model_class)
     @default_page_size = DEFAULT_PAGE_SIZE
-    @max_page_size     = nil
+    @max_page_size     = DEFAULT_MAX_PAGE_SIZE
+    @max_background_page_size = DEFAULT_MAX_BACKGROUND_PAGE_SIZE
     @pagination_orders = {}
     # All types can be sorted by id and none, searchable types can be sorted by relevance.
     add_pagination_order(:id) do
@@ -22,8 +28,7 @@ class PaginationConfig
     end
 
     add_pagination_order(:relevance, default_direction: 'desc') do
-      # For PostgresIndexedSearch, rank will always be a selected column named ts_rank.
-      scope { |direction| model_class.reorder(ts_rank: direction) }
+      scope nil
       search { |direction| { '_score' => { order: direction } } }
     end
   end
@@ -58,11 +63,13 @@ class PaginationConfig
     @default_pagination_order = name
   end
 
-  def new_page(name, order, direction, start, page_size)
-    if max_page_size.present? && (page_size.zero? || page_size > max_page_size)
-      raise PageSizeLimitExceeded.new(page_size, max_page_size)
+  def new_page(name, order, direction, start, page_size, compute_total_count, background: false)
+    max_size = background ? max_background_page_size : max_page_size
+
+    if max_size.present? && (page_size.zero? || page_size > max_size)
+      raise PageSizeLimitExceeded.new(page_size, max_size, background:)
     end
 
-    Page.new(name, order, direction, start, page_size)
+    Page.new(name, order, direction, start, page_size, compute_total_count)
   end
 end

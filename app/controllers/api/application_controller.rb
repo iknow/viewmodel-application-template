@@ -16,13 +16,23 @@ class Api::ApplicationController < ActionController::API
 
   rescue_from ViewModel::AbstractError, with: ->(ex) do
     if !ex.status.is_a?(Numeric) || ex.status >= 500
-      context = {}
-      if ex.respond_to?(:meta)
-        meta = ex.meta
-        context.merge!(ex.meta) if meta.is_a?(Hash)
-      end
+      honeybadger_notify_viewmodel_abstract_error(ex)
+    end
+    render_error(ex.view, ex.status)
+  end
 
-      honeybadger_notify_exception(ex, context:)
+  rescue_from ServiceError, with: ->(ex) do
+    if ex.reportable?
+      context = ex.advisory? ? { tags: 'advisory' } : {}
+      honeybadger_notify_viewmodel_abstract_error(ex, context:)
+    end
+    render_error(ex.view, ex.status)
+  end
+
+  rescue_from ServiceErrorWithBlame, with: ->(ex) do
+    if ex.reportable?
+      context = ex.advisory? ? { tags: 'advisory' } : {}
+      honeybadger_notify_viewmodel_abstract_error(ex, context:)
     end
     render_error(ex.view, ex.status)
   end
@@ -39,6 +49,12 @@ class Api::ApplicationController < ActionController::API
   before_action :disable_rails_session_cookie
   before_action :validate_auth_token
   before_action :set_error_context
+
+  delegate :authorize!, :authorize_ability!,
+           :authorize_ability_for_all_orgs!, :authorize_ability_for_any_org!,
+           :authorize_any_ability_for_all_orgs!,
+           to: :permissions
+
 
   def initialize(...)
     super
@@ -80,13 +96,8 @@ class Api::ApplicationController < ActionController::API
       end
   end
 
-  delegate :authorize!, :authorize_ability!,
-           :authorize_ability_for_all_orgs!, :authorize_ability_for_any_org!,
-           :authorize_any_ability_for_all_orgs!,
-           to: :permissions
-
   def uploaded_files
-    @uploaded_files ||= request.params.fetch(Middleware::MultipartUpload::UPLOADED_FILES_PARAM, {})
+    @uploaded_files ||= request.env.fetch(Middleware::MultipartUpload::UPLOADED_FILES_ENV, {})
   end
 
   def request_context
@@ -161,6 +172,15 @@ class Api::ApplicationController < ActionController::API
     render_sanitized_exception(exception, status:, code:)
   end
 
+  def honeybadger_notify_viewmodel_abstract_error(ex, context: {})
+    if ex.respond_to?(:meta)
+      meta = ex.meta
+      context.merge!(ex.meta) if meta.is_a?(Hash)
+    end
+
+    honeybadger_notify_exception(ex, context:)
+  end
+
   def honeybadger_notify_exception(exception, opts)
     if exception.is_a?(MaskingServiceError)
       opts = opts.merge(
@@ -178,8 +198,11 @@ class Api::ApplicationController < ActionController::API
         })
     end
 
-    if exception.is_a?(HoneybadgerThrottledError) && !exception.should_report!
-      opts = opts.merge(tags: 'suppress_notification')
+    if exception.is_a?(HoneybadgerThrottledError)
+      # Because the tag is "sticky" on the error type on the Honeybadger side,
+      # we need to explicitly clear it if it shouldn't be set.
+      tags = exception.should_report! ? '' : 'suppress_notification'
+      opts = opts.merge(tags:)
     end
 
     Honeybadger.notify(exception, **opts)

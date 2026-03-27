@@ -100,9 +100,11 @@ RSpec.describe UserCsv do
       include_examples 'serializes the column expectations'
 
       context 'with more results than the limit' do
-        let_factory(:other_user, :user) { { } }
-        # We don't want to care which is first, just that the number of results is limited
-        let(:column_expectations) { super().slice(:id) }
+        let_factory(:other_user, :user) { { id: '00000000-0000-0000-0000-000000000103' } }
+
+        let(:column_expectations) do
+          { id: other_user.id }
+        end
 
         let(:expected_truncated) { true }
         # asserts that there is only one row in the response (and that it matches the expectations)
@@ -144,7 +146,7 @@ RSpec.describe UserCsv do
       let(:user) { nil }
 
       let(:email) { 'another_user@example.com' }
-      let(:interface_language) { Language::IT }
+      let(:interface_language) { Language::JA }
 
       let(:request_columns) do
         {
@@ -259,7 +261,7 @@ RSpec.describe UserCsv do
         let(:vm_access_control) { ViewModel::AccessControl::ReadOnly.new }
 
         context 'with a column change' do
-          let(:request_columns) { super().merge(interface_language: Language::IT.enum_constant) }
+          let(:request_columns) { super().merge(interface_language: Language::JA.enum_constant) }
 
           it 'violates the access control' do
             expect { deserialize_update }.to raise_error(ViewModel::AccessControlError)

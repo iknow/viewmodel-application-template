@@ -6,11 +6,13 @@ module AccessControlHelper
 
   def new_serialize_context
     subject.class.new_serialize_context(request_context:,
+                                        audit_log: false,
                                         access_control: self.access_control.new)
   end
 
   def new_deserialize_context
     subject.class.new_deserialize_context(request_context:,
+                                          audit_log: false,
                                           access_control: self.access_control.new)
   end
 
@@ -18,6 +20,7 @@ module AccessControlHelper
     RequestContext.with(
       permissions:,
       resource_owner:,
+      doorkeeper_token:,
       ip: '1.1.1.1')
   end
 
@@ -53,6 +56,37 @@ module AccessControlHelper
       deleted:)
 
     AccessControlVisitor::EntityChange.new(id, changes)
+  end
+
+  def access_control
+    described_class
+  end
+
+  RSpec.shared_examples 'mentions all referenced root view dependencies' do
+    it 'mentions all referenced root view dependencies' do
+      policy_viewmodels = access_control.view_policies.keys
+
+      policy_viewmodels.each do |view_name|
+        next if access_control.external_parent?(view_name)
+
+        view =
+          begin
+            ViewModel::Registry.for_view_name(view_name)
+          rescue ViewModel::DeserializationError::UnknownView
+            # Ignore dependencies of an unknown view (such as a non-Record view)
+            next
+          end
+
+        next unless view.root?
+
+        root_dependencies = view.visible_dependent_viewmodels.select(&:root?)
+        missing_dependencies = root_dependencies.map(&:view_name) - policy_viewmodels
+
+        expect(missing_dependencies).to(
+          be_empty,
+          "includes #{view_name} but not its dependencies: #{missing_dependencies.join(', ')}")
+      end
+    end
   end
 
   # Private/internal predicate for accurately matching viewmodel errors

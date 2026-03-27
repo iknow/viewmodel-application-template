@@ -1,0 +1,25 @@
+From 3ba8749c140555d12c977c6d31dea60ce3b5d0b2 Mon Sep 17 00:00:00 2001
+From: Andrew Childs <andrew.childs@bibo.com.ph>
+Date: Thu, 8 Jan 2026 16:41:07 +0900
+Subject: [PATCH] Disable GCC builtins when compiling the test suite
+
+See: https://github.com/jemalloc/jemalloc/issues/2823
+---
+ Makefile.in | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Makefile.in b/Makefile.in
+index e49a8711..9044fc04 100644
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -386,6 +386,7 @@ install_doc: install_doc_html install_doc_man
+ install: install_bin install_include install_lib install_doc
+ 
+ tests_unit: $(TESTS_UNIT:$(srcroot)%.c=$(objroot)%$(EXE))
++tests_integration: CFLAGS += -fno-builtin
+ tests_integration: $(TESTS_INTEGRATION:$(srcroot)%.c=$(objroot)%$(EXE))
+ tests_stress: $(TESTS_STRESS:$(srcroot)%.c=$(objroot)%$(EXE))
+ tests: tests_unit tests_integration tests_stress
+-- 
+2.52.0
+

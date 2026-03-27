@@ -9,6 +9,16 @@ class JsonSchemaHelper
     JsonSchema.parse!(build(&block))
   end
 
+  def add_to_object(object_schema, properties = {}, required = properties.keys)
+    new_schema = object_schema.deep_dup
+    additional_schema = object(properties, required).deep_stringify_keys!
+
+    new_schema['properties'].deep_merge!(additional_schema['properties'])
+    new_schema['required'] |= additional_schema['required']
+
+    new_schema
+  end
+
   def object(properties = {}, required = properties.keys, additional_properties = false)
     {
       type:                 'object',
@@ -18,7 +28,7 @@ class JsonSchemaHelper
     }
   end
 
-  def partial(properties, required = properties.keys)
+  def partial(properties = {}, required = properties.keys)
     object(properties, required, true)
   end
 

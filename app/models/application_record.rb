@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 class ApplicationRecord < ActiveRecord::Base
-  self.abstract_class = true
-
   include AutomaticValidations
+
+  self.abstract_class = true
 
   # Read a preloaded association without incurring the cost of constructing a CollectionProxy.
   def loaded_assoc(name)
@@ -88,10 +88,22 @@ class ApplicationRecord < ActiveRecord::Base
     self.range_operator_scope(column_name, '@>', table_name:)
   end
 
-  module ActsAsEnumInspect
+  module ActsAsEnumExtension
+    def quoted_id
+      ApplicationRecord.connection.quote(id)
+    end
+
     def inspect
       "<#{self.class.name}:#{self.enum_constant}>"
     end
+  end
+
+  # Support quoted_id on PersistentEnum dummy models, without necessarily having
+  # a database present.
+  PersistentEnum.singleton_class::AbstractDummyModel.define_method(:quoted_id) do
+    quoter = Object.new
+    quoter.singleton_class.include(ActiveRecord::ConnectionAdapters::Quoting)
+    quoter.quote(id)
   end
 
   # Simplify initializing SQL-enum backed acts_as_enums using the block definition style.
@@ -102,7 +114,7 @@ class ApplicationRecord < ActiveRecord::Base
   def self.acts_as_enum(...)
     super
     ParamSerializers.register_enum_serializer(self)
-    include ActsAsEnumInspect
+    include ActsAsEnumExtension
   end
 
   # Adds reflection to belongs_to_enum synthetic attributes for use in schema generation
@@ -129,7 +141,7 @@ class ApplicationRecord < ActiveRecord::Base
     reorder(Arel.sql("#{expression} #{direction.casecmp('desc').zero? ? 'DESC' : 'ASC'}"))
   end
 
-  def self._build_values_select(entries:, name:, types:, projection:)
+  def self._build_values_select(entries:, name:, types: { id: 'uuid' }, projection: ->(x) { [x] })
     table_name     = PG::Connection.quote_ident(name.to_s)
     column_names   = types.keys.map { |c| PG::Connection.quote_ident(c.to_s) }
     values_literal = quote_values_literal(entries, types.values, &projection)
@@ -139,11 +151,11 @@ class ApplicationRecord < ActiveRecord::Base
 
   VALUE_SELECT_BUILDER = KeywordBuilder.create(self, constructor: :_build_values_select)
 
-  def self.build_values_select(entries, &)
-    VALUE_SELECT_BUILDER.build!(entries:, &)
+  def self.build_values_select(entries, **kwargs, &)
+    VALUE_SELECT_BUILDER.build!(entries:, **kwargs, &)
   end
 
-  def self._build_values_table(entries:, name:, types:, projection:)
+  def self._build_values_table(entries:, name:, types: { id: 'uuid' }, projection: ->(x) { [x] })
     table_name     = PG::Connection.quote_ident(name.to_s)
     column_names   = types.keys.map { |c| PG::Connection.quote_ident(c.to_s) }
     values_literal = quote_values_literal(entries, types.values, &projection)
@@ -153,8 +165,8 @@ class ApplicationRecord < ActiveRecord::Base
 
   VALUE_TABLE_BUILDER = KeywordBuilder.create(self, constructor: :_build_values_table)
 
-  def self.build_values_table(entries, &)
-    VALUE_TABLE_BUILDER.build!(entries:, &)
+  def self.build_values_table(entries, **kwargs, &)
+    VALUE_TABLE_BUILDER.build!(entries:, **kwargs, &)
   end
 
   def self.quote_values_literal(entries, column_types)
@@ -204,6 +216,16 @@ class ApplicationRecord < ActiveRecord::Base
       if removed_values.present?
         association_scope.destroy(indexed_values.fetch_values(*removed_values))
       end
+    end
+  end
+
+  def attributes_from_association(association_name, attributes)
+    assoc = association(association_name)
+    attributes = attributes.map(&:to_sym)
+    if assoc.loaded?
+      assoc.target.map { |m| attributes.map { |a| m.read_attribute(a) } }
+    else
+      assoc.scope.pluck(*attributes)
     end
   end
 end

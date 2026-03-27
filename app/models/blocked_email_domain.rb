@@ -5,8 +5,8 @@
 # Table name: blocked_email_domains
 #
 #  id         :uuid             not null, primary key
-#  name       :string           not null, indexed
 #  automatic  :boolean          default(FALSE), not null
+#  name       :string           not null, uniquely indexed
 #  created_at :datetime         not null
 #  updated_at :datetime         not null
 #

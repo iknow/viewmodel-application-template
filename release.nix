@@ -13,6 +13,10 @@ let
 
   eikaiwaPkgs = (import ./default.nix { inherit pkgs; isRelease = true; });
 
+  commonOptions = {
+    SECRET_KEY_BASE = "05e4c69fa96b9ba757a7f06ec7ab9480232b46f5e22b43407845cfd2a6ba8e658cba72c3b44cdae74fab9044f76211f5a4b65a0a1fb6ae2a8d7ab9ba8329a6e1";
+  };
+
   inherit (eikaiwaPkgs) ociTools;
 
   accounts = {
@@ -248,7 +252,7 @@ in
     useHostStore = true;
     image = testImage;
     command = [ testEntrypoint ];
-    environment = {
+    environment = commonOptions // {
       RAILS_DATABASE_HOST = "postgres";
       OPENSEARCH_HOST = "opensearch:9200";
       OPENSEARCH_TIMEOUT = "60"; # parallel tests can stress opensearch
@@ -284,7 +288,7 @@ in
     useHostStore = true;
     image = testImage;
     command = [ testSanitizeEntrypoint ];
-    environment = {
+    environment = commonOptions // {
       RAILS_DATABASE_HOST = "postgres";
     };
     dependencies = {
@@ -320,7 +324,7 @@ in
   testConfigurations.migrate-all = {
     useHostStore = true;
     image = testImage;
-    environment = {
+    environment = commonOptions // {
       RAILS_DATABASE_HOST = "postgres";
     };
     command = [(writeScript "migrate-all.sh" ''
@@ -349,7 +353,7 @@ in
   testConfigurations.scripts = {
     useHostStore = true;
     image = testImage;
-    environment = {
+    environment = commonOptions // {
       RAILS_DATABASE_HOST = "postgres";
     };
     command = [(writeScript "migrate-all.sh" ''

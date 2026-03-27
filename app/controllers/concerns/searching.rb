@@ -37,21 +37,20 @@ module Searching
   def perform_search(query_string, filters: nil, page: nil, translation_language: nil,
                      with: self.class.search_class, lock: nil, filter_only: false)
     with.model_class.transaction do
-      search = with.new(query_string, filters:, page:, filter_only:, translation_language:)
+      search = with.new(query_string, filters:, page:, filter_only:, translation_language:, controller: self)
 
       models    = search.load_models(lock:)
       model_ids = models.each_with_object(Set.new) { |m, s| s << m.id }
 
-      if search.total
-        # We may not have been able to resolve models for each of the ES results:
-        # filter stale entities from total counts and supplementary data
-        stale_count = search.size - models.size
-        add_response_metadata(:search, SearchResultView.new(search.total - stale_count, stale_count))
-      end
+      # We may not have been able to resolve models for each of the ES results:
+      # filter stale entities from total counts and supplementary data
+      stale_count = search.size - models.size
+      total_count = search.total - stale_count
+      add_response_metadata(:search, SearchResultView.new(total_count, stale_count))
 
       if page
         last_page = !page.size_limit? || (page.start + page.page_size) >= search.total
-        add_response_metadata(:pagination, PaginationView.new(page, last_page:))
+        add_response_metadata(:pagination, PaginationView.new(page, last_page:, total_count:))
       end
 
       search.supplementary_data.each do |field_name, data|

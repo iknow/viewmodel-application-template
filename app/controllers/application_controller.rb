@@ -11,4 +11,8 @@ class ApplicationController < ActionController::Base
     default_domain = brand.brand_domains.default
     FrontendRoutes.new(default_domain.env_uri).url(resource, *positional_url_params, **query_params)
   end
+
+  def redirect_to_front_end_url(...)
+    redirect_to front_end_url(...), allow_other_host: true
+  end
 end

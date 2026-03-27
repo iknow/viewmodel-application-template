@@ -19,13 +19,14 @@ class ChewyIndexedSearch < ApplicationSearch
     end
   end
 
-  def initialize(query_string, translation_language: nil, page:, filters:, filter_only: false)
+  def initialize(query_string, translation_language: nil, page:, filters:, controller:, filter_only: false)
     super()
 
     if query_string.present? && filter_only
       raise ArgumentError.new('Query string presented to filter_only query')
     end
 
+    @controller = controller
     @supplementary_fields = []
     @translation_languages = [translation_language] if translation_language
 
@@ -33,7 +34,7 @@ class ChewyIndexedSearch < ApplicationSearch
     index = select_index(filters)
     query = build_query(index, query_string, filter_only:)
     query = filter_query(query, filters)
-    query = paginate_query(query, page)
+    query = paginate_query(query, page, filters)
     query = select_fields(query)
     @query = query
   end
@@ -123,14 +124,14 @@ class ChewyIndexedSearch < ApplicationSearch
   def filter_query(query, filters)
     return query unless filters
 
-    filters.search_terms.inject(query) do |q, term|
+    filters.search_terms(controller: @controller).inject(query) do |q, term|
       q.filter(term)
     end
   end
 
-  def paginate_query(query, page)
+  def paginate_query(query, page, filters)
     if page
-      query = query.order(page.order.search_for(page.direction))
+      query = query.order(page.order.search_for(page.direction, filters, controller: @controller))
       query = query.limit(page.page_size) if page.page_size > 0
       query = query.offset(page.start)    if page.start > 0
       query
@@ -143,14 +144,23 @@ class ChewyIndexedSearch < ApplicationSearch
     query.source(includes: [:id, *@supplementary_fields])
   end
 
-  def field_translations(field)
-    if translation_languages.nil?
-      ["#{field}_translations.*"]
+  # For a field with a multi-field mapping per language, using the
+  # `multi_language_string_mapping` pattern.
+  def multi_language_field(field, in_languages: nil)
+    if in_languages.nil?
+      ["#{field}.*"]
     else
-      translation_languages.map do |language|
-        "#{field}_translations.#{language.code}"
+      in_languages.map do |language|
+        "#{field}.#{language.code}"
       end
     end
+  end
+
+  # Translations (only) for a field mapped using the
+  # `translated_strings_mapping` pattern, where the non-canonical translations
+  # are included separately from the main language as `foo_translations.*`
+  def field_translations(field)
+    multi_language_field("#{field}_translations", in_languages: translation_languages)
   end
 
   def fields_translations(fields)

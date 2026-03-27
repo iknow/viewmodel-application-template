@@ -5,7 +5,7 @@
 # Table name: background_job_statuses
 #
 #  id   :enum             not null, primary key
-#  name :string           not null, indexed
+#  name :string           not null, uniquely indexed
 #
 # Indexes
 #

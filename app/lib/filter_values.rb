@@ -10,7 +10,6 @@ class FilterValues
 
   def each_filter
     return to_enum(__method__) unless block_given?
-
     @filter_values.each do |filter_name, value|
       yield(@filter_set.fetch(filter_name), value)
     end
@@ -41,9 +40,9 @@ class FilterValues
   # case of conditions that apply to a joined table, these joins are specified
   # separately via scope_joins_for, so that the joining scopes can be separately
   # #merge'd to the combined conditions.
-  def scope
+  def scope(controller: nil)
     condition_scopes = @filter_values.map do |filter_name, value|
-      @filter_set[filter_name].scope_for(value, self)
+      @filter_set[filter_name].scope_for(value, self, controller:)
     end
 
     # Merge conditions with #and to avoid clobbering range queries with Rails 7
@@ -53,7 +52,7 @@ class FilterValues
     end
 
     join_scopes = @filter_values.map do |filter_name, value|
-      @filter_set[filter_name].scope_joins_for(value, self)
+      @filter_set[filter_name].scope_joins_for(value, self, controller:)
     end.compact
 
     join_scopes.inject(conditions) do |a, b|
@@ -61,9 +60,9 @@ class FilterValues
     end
   end
 
-  def search_terms
+  def search_terms(controller: nil)
     @filter_values.flat_map do |filter_name, value|
-      @filter_set.fetch(filter_name).search_for(value)
+      @filter_set.fetch(filter_name).search_for(value, self, controller:)
     end
   end
 
@@ -75,10 +74,47 @@ class FilterValues
     @filter_values[filter_name] = filter_value
   end
 
+  def merge!(filter_hash)
+    filter_hash.each do |filter_name, filter_value|
+      self[filter_name] = filter_value
+    end
+
+    self
+  end
+
   delegate :[], :fetch, :delete, to: :@filter_values
+
+  def to_h
+    @filter_values.dup
+  end
+
+  # Serialize the filter values using the same ParamSerializers. If `fallback`
+  # is provided, we demand that it succeeds: fallback to `inspect` in the case
+  # of a dump error.
+  def serialize(fallback: false)
+    @filter_values.to_h do |filter_name, value|
+      filter = @filter_set.fetch(filter_name)
+      serialized_value =
+        begin
+          filter.format.dump(value, json: true)
+        rescue ParamSerializers::DumpError
+          if fallback
+            value.inspect
+          else
+            raise
+          end
+        end
+
+      [filter_name, serialized_value]
+    end
+  end
 
   def include?(filter_name)
     @filter_values.has_key?(filter_name.to_sym)
+  end
+
+  def included
+    @filter_values.keys
   end
 
   def require!(*filter_names)

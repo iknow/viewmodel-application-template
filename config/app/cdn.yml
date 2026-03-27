@@ -1,0 +1,26 @@
+---
+development: &development
+  cdn_domains:
+    - region: ap-northeast-1
+      bucket_name: example-bucket-dev
+      url_prefix:  https://assets-dev.example.com
+    - region: ap-northeast-1
+      bucket_name: example-bucket
+      url_prefix:  https://example.assets.com
+
+test: *development
+
+production:
+  cdn_domains:
+    - region: ap-northeast-1
+      bucket_name: example-bucket
+      url_prefix:  https://assets.example.com
+
+staging:
+  cdn_domains:
+    - region: ap-northeast-1
+      bucket_name: example-bucket-staging
+      url_prefix:  https://assets-stg.example.com
+    - region: ap-northeast-1
+      bucket_name: example-bucket
+      url_prefix:  https://assets.example.com

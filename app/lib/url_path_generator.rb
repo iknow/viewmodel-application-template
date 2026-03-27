@@ -41,8 +41,10 @@ class UrlPathGenerator
       CGI.escape(segment)
     end
 
+    # Use Rails' own Hash#to_query helper to construct the normalized
+    # Rails-style nested query parameters
     def escape_query_parameters(params)
-      params.map { |name, param| "#{name}=#{CGI.escape(param.to_s)}" }.join('&')
+      params.to_query
     end
   end
 end

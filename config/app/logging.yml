@@ -1,0 +1,13 @@
+development: &development
+  log_level: debug
+  single_line_logs: false
+
+test: *development
+
+staging:
+  log_level: <%= ENV.fetch('RAILS_LOG_LEVEL', 'info') %>
+  single_line_logs: false
+
+production:
+  log_level: <%= ENV.fetch('RAILS_LOG_LEVEL', 'info') %>
+  single_line_logs: true

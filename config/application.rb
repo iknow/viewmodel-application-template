@@ -42,32 +42,53 @@ module Demoapp
     end
 
     # Initialize configuration defaults for originally generated Rails version.
-    config.load_defaults 7.1
+    config.load_defaults 8.1
     config.active_support.cache_format_version = 7.1
     config.active_record.belongs_to_required_by_default = false
 
-    # We may require this?
-    # config.add_autoload_paths_to_load_path = false
+    # The Doorkeeper we currently use (5.4.0) uses redirects without :allow_other_host.
+    # Remove this once we upgrade Doorkeeper.
+    config.action_controller.raise_on_open_redirects = false
+    config.action_controller.action_on_open_redirect = :log
 
-    # Please, add to the `ignore` list any other `lib` subdirectories that do
-    # not contain `.rb` files, or that should not be reloaded or eager loaded.
-    # Common ones are `templates`, `generators`, or `middleware`, for example.
-    config.autoload_lib(ignore: %w(assets tasks generators middleware))
+    # Rails 7.1 removes autoload paths from the load path (excluding /lib). We
+    # add it back so that initializers can access classes in app/lib via require
+    # rather than require_dependency, thereby locking them in and preventing
+    # hot-reloading from making globally cached values no longer valid.
+    config.add_autoload_paths_to_load_path = true
 
-    # Configuration for the application, engines, and railties goes here.
-    #
-    # These settings can be overridden in specific environments using the files
-    # in config/environments, which are processed later.
-    #
-    # config.time_zone = "Central Time (US & Canada)"
-    # config.eager_load_paths << Rails.root.join("extras")
-
+    config.autoload_lib(ignore: %w[assets tasks generators middleware test rubo_cop web_mock])
     config.autoload_once_paths << "#{root}/app/config"
 
+    # Settings in config/environments/* take precedence over those specified here.
+    # Application configuration should go into files in config/initializers
+    # -- all .rb files in that directory are automatically loaded.
+    #
     config.action_mailer.delivery_method = :smtp
     config.action_mailer.delivery_job = 'MailerJob'
 
-    config.action_mailer.preview_path = Rails.root.join('spec', 'mailers', 'previews')
+    config.action_mailer.preview_paths = [Rails.root.join('spec', 'mailers', 'previews')]
+
+    config.colorize_logging = ENV.fetch('NO_COLOR', '') == ''
+
+    # Enable locale fallbacks for I18n (Allows lookups to fall back to the
+    # I18n.default_locale when a translation cannot be found).
+    # I18n::Backend::Simple.send(:include, I18n::Backend::Fallbacks)
+
+    # Rails i18n project uses zh-TW instead of zh-Hant
+    # I18n.fallbacks.map(:'zh-Hant' => :'zh-TW')
+
+    # Hide the untranslated internal Doorkeeper strings from PhraseApp
+    config.i18n.load_path += Dir[Rails.root.join('config', 'locales', 'internal', '*.yml').to_s]
+
+    config.i18n.default_locale = :en
+    config.i18n.fallbacks = [
+      :en,
+      {
+       :'zh-Hant' => [:'zh-TW', 'en'],
+       :'zh-Hans' => [:'zh-CN', 'en'],
+      },
+    ]
 
     config.active_record.schema_format = :sql
 
@@ -104,7 +125,11 @@ module Demoapp
       g.resource_viewmodel_spec  :viewmodel_view_spec
     end
 
-    config.lograge.enabled = false
+    require_relative '../app/config/logging_config'
+
+    config.log_level = LoggingConfig.log_level
+
+    config.lograge.enabled = LoggingConfig.single_line_logs
 
     config.lograge.base_controller_class = 'ActionController::API'
 
@@ -122,5 +147,7 @@ module Demoapp
 
       payload
     end
+
+    config.debug_exception_response_format = :api
   end
 end

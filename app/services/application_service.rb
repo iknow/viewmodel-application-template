@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 class ApplicationService
-  include ErrorWrapping
+  include ViewModel::ErrorWrapping
 
   attr_reader :request_context
 
@@ -15,8 +15,6 @@ class ApplicationService
     @request_context = request_context
   end
 
-
-
   # Report a request error from upstream services to the Rails log and add its
   # context details to Honeybadger before swallowing the actual exception.
   def record_service_faraday_error(service_name, error)
@@ -24,20 +22,24 @@ class ApplicationService
     Rails.logger.warn(message)
 
     # Attempt to extract request details where possible
-    request = error.response.tap do |r|
-      case r
-      when nil               then nil
-      when Faraday::Response then r.request
-      else r[:request]
+    request =
+      case error.response
+      when nil
+        nil
+      when Faraday::Response
+        body = error.response.env.request_body
+        JSON.parse(body) rescue body
+      else
+        error.response[:request]
       end
-    end
 
-    context = {
+    context = ViewModelLogging.filter_error_context({
       service: service_name,
       response_status: error.response_status,
       response: error.response_body,
       request:,
-    }
+    })
+
     Honeybadger.context(context)
   end
 end

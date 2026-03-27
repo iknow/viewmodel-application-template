@@ -6,6 +6,7 @@ class ApplicationView < ViewModel::ActiveRecord
   NEXT = 10000
 
   extend AssociationCustomizer::Customizable
+  include ViewmodelMigrationHelpers
 
   class MissingContextData < ViewModel::AbstractError
     status 500
@@ -33,7 +34,7 @@ class ApplicationView < ViewModel::ActiveRecord
 
     attr_reader :request_context
 
-    delegate(*RequestContext.field_names, to: :request_context)
+    delegate(*RequestContext.field_names, :machine_account?, :primary_principal, :primary_principal!, to: :request_context)
 
     # Allow data required for (usually) serialization to be provided out-of-band
     # of the tree traversal. Data can be provided either as a map of a value per
@@ -85,7 +86,7 @@ class ApplicationView < ViewModel::ActiveRecord
   end
 
   module ContextBase
-    delegate(*RequestContext.field_names, to: :shared_context)
+    delegate(*RequestContext.field_names, :machine_account?, :primary_principal, :primary_principal!, to: :shared_context)
     delegate :add_view_context_data, :view_context_data, :has_view_context_data?, :request_context, to: :shared_context
   end
 
@@ -220,18 +221,19 @@ class ApplicationView < ViewModel::ActiveRecord
     end
   end
 
-  # Define a simple migration for added optional fields, with a down-migration
-  # removing them and an empty up-migration.
-  def self.migrates_adding_fields(*fields, from:, to:)
-    fields = fields.map(&:to_s)
-
-    migrates from:, to: do
-      down do |view, _refs|
-        fields.each { |f| view.delete(f) }
-      end
-      up { |_, _| }
-    end
+  # Is this viewmodel sugared out in the serialization of its parents
+  def self.invisible_to_client?
+    false
   end
+
+  def self.invisible_to_client!
+    define_singleton_method(:invisible_to_client?) { true }
+  end
+
+  def self.visible_dependent_viewmodels
+    self.dependent_viewmodels(include_external: false).select { |vm| !vm.invisible_to_client? }
+  end
+
 
   def self.null_reference
     ViewModel::Reference.new(self, nil)

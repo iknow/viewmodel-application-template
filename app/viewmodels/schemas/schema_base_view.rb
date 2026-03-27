@@ -32,6 +32,19 @@ class Schemas::SchemaBaseView < ViewModel
     end
   end
 
+  def self.customize_enum_array_association(association_name, enum_type, as: enum_type.model_name.plural, read_only: false, write_once: false)
+    define_method(:"serialize_#{association_name}") do |json, _association_data|
+      json.name as
+      json.type 'attribute'
+      json.array true
+      json.read_only read_only
+      json.write_once write_once
+      json.nullable false
+      json.attribute_kind 'serializer'
+      json.attribute_type serializer_name(ParamSerializers.const_get(enum_type.name))
+    end
+  end
+
   protected
 
   def viewmodel_members
@@ -77,10 +90,29 @@ class Schemas::SchemaBaseView < ViewModel
   def serialize_attribute(json, member_name, attribute_data)
     json.name       member_name
     json.type       'attribute'
-    json.array      attribute_data.array?
     json.read_only  attribute_data.read_only?
     json.write_once attribute_data.write_once?
-    json.nullable   model_attribute_nullable?(attribute_data.model_attr_name)
+
+    attribute_array =
+      case
+      when self.respond_to?(:"#{member_name}_array")
+        self.send(:"#{member_name}_array")
+      when attribute_data.array?
+        true
+      else
+        model_attribute_array?(attribute_data.model_attr_name)
+      end
+
+    json.array attribute_array
+
+    attribute_nullable =
+      if self.respond_to?(:"#{member_name}_nullable")
+        self.send(:"#{member_name}_nullable")
+      else
+        model_attribute_nullable?(attribute_data.model_attr_name)
+      end
+
+    json.nullable attribute_nullable
 
     if attribute_data.attribute_serializer
       # attribute uses a format: serializer
@@ -93,7 +125,14 @@ class Schemas::SchemaBaseView < ViewModel
     else
       # Natively serialized model column
       json.attribute_kind 'native'
-      json.attribute_type model_attribute_type(attribute_data.model_attr_name)
+      attribute_type =
+        if self.respond_to?(:"#{member_name}_type")
+          self.send(:"#{member_name}_type")
+        else
+          model_attribute_type(attribute_data.model_attr_name)
+        end
+
+      json.attribute_type attribute_type
     end
   end
 
@@ -110,11 +149,18 @@ class Schemas::SchemaBaseView < ViewModel
     end
   end
 
-  def model_attribute_nullable?(attribute_name)
+  def model_attribute_array?(attribute_name, model_class: self.model_class)
+    return false unless model_class.respond_to?(:type_for_attribute)
+
+    type = model_class.type_for_attribute(attribute_name)
+    type.is_a?(::ActiveRecord::ConnectionAdapters::PostgreSQL::OID::Array)
+  end
+
+  def model_attribute_nullable?(attribute_name, model_class: self.model_class)
     return nil unless model_class.respond_to?(:column_for_attribute)
 
     column_name =
-      if (enum_attr_data = enum_attribute(attribute_name))
+      if (enum_attr_data = enum_attribute(attribute_name, model_class:))
         enum_attr_data.foreign_key
       else
         attribute_name
@@ -128,8 +174,8 @@ class Schemas::SchemaBaseView < ViewModel
     column.null
   end
 
-  def model_attribute_type(attribute_name)
-    if (enum_attr_data = enum_attribute(attribute_name))
+  def model_attribute_type(attribute_name, model_class: self.model_class)
+    if (enum_attr_data = enum_attribute(attribute_name, model_class:))
       return enum_attr_data.target_class.name
     end
 
@@ -153,7 +199,9 @@ class Schemas::SchemaBaseView < ViewModel
       type.type
     else
       # fall back to the SQL column type (if present)
-      model_class.column_for_attribute(attribute_name).sql_type
+      sql_type = model_class.column_for_attribute(attribute_name).sql_type
+      sql_type = 'string' if sql_type == 'text' # normalize the multiple database text types
+      sql_type
     end
   end
 
@@ -167,7 +215,7 @@ class Schemas::SchemaBaseView < ViewModel
     end
   end
 
-  def enum_attribute(attribute_name)
+  def enum_attribute(attribute_name, model_class: self.model_class)
     if model_class.respond_to?(:belongs_to_enum_attribute)
       model_class.belongs_to_enum_attribute(attribute_name)
     end

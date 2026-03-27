@@ -35,6 +35,5 @@ GLOBAL_PRIVACY_FILTER_PARAMETERS = [
 # that are specifically applicable to request parameters
 Rails.application.config.filter_parameters += GLOBAL_PRIVACY_FILTER_PARAMETERS
 Rails.application.config.filter_parameters += [
-  'INT_SESID', # must match DmmCookieService::DMM_SESSION_COOKIE
   :code,
 ]

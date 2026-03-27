@@ -204,11 +204,11 @@ RSpec.describe 'Api::UsersController', type: :request do
 
         context 'forcing a column' do
           let(:upload_data) { super().except(:interface_language) }
-          let(:request_params) { super().merge(forced_columns: { 'interface_language' => Language::IT.enum_constant }) }
+          let(:request_params) { super().merge(forced_columns: { 'interface_language' => Language::JA.enum_constant }) }
 
           it_behaves_like 'responds successfully with CSV result' do
             local_expectations do
-              expect(user.reload.interface_language).to eq(Language::IT)
+              expect(user.reload.interface_language).to eq(Language::JA)
             end
           end
         end

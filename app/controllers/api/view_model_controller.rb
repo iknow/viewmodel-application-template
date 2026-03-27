@@ -69,20 +69,21 @@ class Api::ViewModelController < Api::ApplicationController
   end
 
   def index(viewmodel_class: self.viewmodel_class, scope: nil, serialize_context: new_serialize_context(viewmodel_class:), prerenderer: nil)
-    pre_rendered = viewmodel_class.transaction do
-      strategy = parse_param(:resolution_strategy, with: LookupStrategy::Serializer, default: default_resolution_strategy)
+    pre_rendered = with_database_timeout do
+      viewmodel_class.transaction do
+        strategy = parse_param(:resolution_strategy, with: LookupStrategy::Serializer, default: default_resolution_strategy)
+        views = resolve_views(scope, current_filters, current_page, viewmodel_class:, serialize_context:, strategy:)
 
-      views = resolve_views(scope, current_filters, current_page, viewmodel_class:, serialize_context:, strategy:)
+        load_context_data(views, context: serialize_context)
 
-      load_context_data(views, context: serialize_context)
+        views = yield(views) if block_given?
 
-      views = yield(views) if block_given?
-
-      if prerenderer
-        prerenderer.call(views, serialize_context:)
-      else
-        ViewModel.preload_for_serialization(views)
-        prerender_viewmodel(views, serialize_context:)
+        if prerenderer
+          prerenderer.call(views, serialize_context:)
+        else
+          ViewModel.preload_for_serialization(views)
+          prerender_viewmodel(views, serialize_context:)
+        end
       end
     end
 
@@ -94,15 +95,20 @@ class Api::ViewModelController < Api::ApplicationController
   def index_associated(scope: nil, serialize_context: new_serialize_context)
     validate_lookup_strategy!(scope, current_filters, current_page,
                               strategy: LookupStrategy::Scope)
-    scope = merge_scopes(scope,
-                         current_filters.scope,
-                         current_page&.scope(current_filters))
+    scope = merge_scopes(scope, current_filters.scope(controller: self))
 
-    super(scope:, serialize_context:) do |views|
-      record_pagination!(views, current_page) if current_page
-      load_context_data(views, context: serialize_context)
-      views = yield(views) if block_given?
-      views
+    if current_page
+      scope = merge_scopes(scope, current_page.ordering_scope(current_filters, controller: self))
+      scope = current_page.pagination_scope(scope)
+    end
+
+    with_database_timeout do
+      super(scope:, serialize_context:) do |views|
+        record_pagination!(views, current_page) if current_page
+        load_context_data(views, context: serialize_context)
+        views = yield(views) if block_given?
+        views
+      end
     end
   end
 
@@ -137,28 +143,29 @@ class Api::ViewModelController < Api::ApplicationController
                                        with: ParamSerializers::Language::Insensitive,
                                        default: nil)
 
-    required_strategy = search_class.uses_scope_filters? ? LookupStrategy::Scope : LookupStrategy::Search
+    validate_lookup_strategy!(nil, current_filters, current_page,
+                              strategy: LookupStrategy::Search)
 
-    validate_lookup_strategy!(nil, current_filters, current_page, strategy: required_strategy)
+    pre_rendered = with_database_timeout do
+      viewmodel_class.transaction do
+        models = perform_search(query,
+                                with: search_class,
+                                page: current_page,
+                                translation_language:,
+                                filters: current_filters)
 
-    pre_rendered = viewmodel_class.transaction do
-      models = perform_search(query,
-                              with: search_class,
-                              page: current_page,
-                              translation_language:,
-                              filters: current_filters)
+        views = models.map { |model| viewmodel_class.new(model) }
 
-      views = models.map { |model| viewmodel_class.new(model) }
+        load_context_data(views, context: serialize_context)
 
-      load_context_data(views, context: serialize_context)
+        views = yield(views) if block_given?
 
-      views = yield(views) if block_given?
-
-      if prerenderer
-        prerenderer.call(views, serialize_context:)
-      else
-        ViewModel.preload_for_serialization(views)
-        prerender_viewmodel(views, serialize_context:)
+        if prerenderer
+          prerenderer.call(views, serialize_context:)
+        else
+          ViewModel.preload_for_serialization(views)
+          prerender_viewmodel(views, serialize_context:)
+        end
       end
     end
 
@@ -209,8 +216,12 @@ class Api::ViewModelController < Api::ApplicationController
     case resolved_strategy
     when LookupStrategy::Scope
       # resolve views from database
-      scope = merge_scopes(scope, filters.scope)
-      scope = merge_scopes(scope, page.scope(filters)) if page
+      scope = merge_scopes(scope, filters.scope(controller: self))
+
+      if page
+        scope = merge_scopes(scope, page.ordering_scope(filters, controller: self))
+        scope = page.pagination_scope(scope)
+      end
 
       views = viewmodel_class.load(scope:, eager_include: false)
       record_pagination!(views, page) if page
@@ -247,7 +258,7 @@ class Api::ViewModelController < Api::ApplicationController
   def resolve_lookup_strategy(scope, filters, page, strategy: LookupStrategy::Either)
     if strategy.can_scope? && filters.can_scope? && (page.nil? || page.can_scope?)
       LookupStrategy::Scope
-    elsif strategy.can_search? && !search_class.uses_scope_filters? && scope.nil? && filters.can_search? && (page.nil? || page.can_search?)
+    elsif strategy.can_search? && scope.nil? && filters.can_search? && (page.nil? || page.can_search?)
       LookupStrategy::Search
     else
       nil
@@ -261,13 +272,72 @@ class Api::ViewModelController < Api::ApplicationController
     # we're on the last page: if we're not, then drop it.
     results.pop unless last_page
 
-    pagination_view = PaginationView.new(page, last_page:)
+    # If we have no page size limit, the total count is the number of results.
+    # If have a limit, we can ask for the total count to be computed by window
+    # function, in which case each resulting model will have (the same)
+    # `pagination_total_count`.
+    total_count =
+      case
+      when !page.size_limit?
+        results.count
+      when results.empty?
+        0
+      when page.compute_total_count?
+        results.first.model.pagination_total_count
+      else
+        nil
+      end
+
+    pagination_view = PaginationView.new(page, last_page:, total_count:)
     add_response_metadata(:pagination, pagination_view)
   end
 
   def load_context_data(views, context:)
     if viewmodel_class.const_defined?(:ContextData)
       viewmodel_class::ContextData.load(views, context:)
+    end
+  end
+
+  class ManualTimeoutExceeded < ViewModel::AbstractError
+    status 502
+    code 'DatabaseTimeout.ManualTimeoutExceeded'
+    detail 'An explicitly requested database timeout was exceeded'
+
+    def initialize(timeout)
+      super()
+      @timeout = timeout
+    end
+
+    def meta
+      { timeout: @timeout }
+    end
+  end
+
+  # Handles parsing the database_timeout param.
+  # When a database_timeout is specified (as an integer in seconds), it will:
+  #
+  # 1. Override the default database timeout
+  # 2. Catch raw DB timeout errors and return a 502 ManualTimeoutExceeded response,
+  #    allowing the error to be distinguished from an unexpected timeout.
+  #
+  # If database_timeout is not specified, then the default timeout will be used,
+  # and the raw DB timeout error response will be returned.
+  def with_database_timeout(&)
+    if (timeout = parse_integer_param(:database_timeout, default: nil))
+      timeout = 1 if timeout < 1
+      timeout = 10 if timeout > 10
+
+      begin
+        DatabaseTimeout.with_timeout(timeout * 1000, &)
+      rescue ActiveRecord::QueryCanceled => e
+        if e.cause.is_a?(PG::QueryCanceled) && e.cause.message =~ /canceling statement due to statement timeout/
+          raise ManualTimeoutExceeded.new(timeout)
+        else
+          raise
+        end
+      end
+    else
+      yield
     end
   end
 end

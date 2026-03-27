@@ -1,12 +1,16 @@
 # frozen_string_literal: true
 
 # This file is copied to spec/ when you run 'rails generate rspec:install'
-require 'spec_helper'
 ENV['RAILS_ENV'] ||= 'test'
 require_relative '../config/environment'
 # Prevent database truncation if the environment is production
 abort('The Rails environment is running in production mode!') if Rails.env.production?
+require 'spec_helper'
 require 'rspec/rails'
+require 'chewy/rspec'
+Dir[Rails.root.join('spec', 'support', 'mocks', '**', '*.rb')].each { |file| require file }
+Dir[Rails.root.join('spec', 'support', 'helpers', '*.rb')].each { |file| require file }
+Dir[Rails.root.join('spec', 'support', 'matchers', '*.rb')].each { |file| require file }
 # Add additional requires below this line. Rails is not loaded until this point!
 
 # Requires supporting ruby files with custom matchers and macros, etc, in
@@ -22,7 +26,7 @@ require 'rspec/rails'
 # directory. Alternatively, in the individual `*_spec.rb` files, manually
 # require only the support files necessary.
 #
-Rails.root.glob('spec/support/**/*.rb').sort.each { |f| require f }
+# Dir[Rails.root.join('spec/support/**/*.rb')].each { |f| require f }
 
 # Checks for pending migrations and applies them before tests are run.
 # If you are not using ActiveRecord, you can remove these lines.
@@ -32,20 +36,22 @@ rescue ActiveRecord::PendingMigrationError => e
   abort e.to_s.strip
 end
 
-# Configure WebMock to forbid real network requests
-WebMock.disable_net_connect!
+# Configure webmock, but allow ElasticSearch
+require 'web_mock/http_lib_adapters/net_http2_adapter'
+WebMock.disable_net_connect!(
+  allow: [
+    ElasticsearchConfig.host,
+  ],
+)
 
 RSpec.configure do |config|
   # Remove this line if you're not using ActiveRecord or ActiveRecord fixtures
-  config.fixture_paths = [Rails.root.join('spec', 'fixtures')]
+  config.fixture_paths = [::Rails.root.join('spec', 'fixtures')]
 
   # If you're not using ActiveRecord, or you'd prefer not to run each of your
   # examples within a transaction, remove the following line or assign false
   # instead of true.
   config.use_transactional_fixtures = true
-
-  # You can uncomment this line to turn off ActiveRecord support entirely.
-  # config.use_active_record = false
 
   # RSpec Rails can automatically mix in different behaviours to your tests
   # based on their file location, for example enabling you to call `get` and
@@ -54,7 +60,7 @@ RSpec.configure do |config|
   # You can disable this behaviour by removing the line below, and instead
   # explicitly tag your specs with their type, e.g.:
   #
-  #     RSpec.describe UsersController, type: :controller do
+  #     RSpec.describe UsersController, :type => :controller do
   #       # ...
   #     end
   #
@@ -71,16 +77,32 @@ RSpec.configure do |config|
   config.include JsonResponseHelper
   config.include ViewModelRequestHelper, type: :request
   config.include PaginatedRequestHelper, type: :request
-  config.include FilteredRequestHelper, type: :request
-  config.include RequestHelper, type: :request
-  config.include ChewyHelper, type: :chewy_search
+  config.include FilteredRequestHelper,  type: :request
+  config.include RequestHelper,          type: :request
+  config.include SearchHelper,           type: :search
   config.include ChewyIndexHelper
+  config.include MockHelper
   config.include GlobalHelper
-  config.include ViewModelHelper, type: :viewmodel
-  config.include AccessControlHelper, type: :access_control
+  config.include ViewModelHelper,      type: :viewmodel
+  config.include AccessControlHelper,  type: :access_control
   config.include MediaUploadHelper
   config.include FactoryHelper
   config.include SharedExamplesLocalExtensionsHelper
+
+  # RSpec in default configuration includes a compatibility layer for the tagged
+  # logging adapter in all of the Rails-specific example groups. If you say
+  # `type: controller`, or `type: routing`, you will automatically get the
+  # ControllerExampleGroup mixin, or the RoutingExampleGroup mixin, and these
+  # will include the TaggedLoggingAdapter (via RailsExampleGroup). If your
+  # example group is not rails specific, you will not get this helper.
+  # Everything in this application is rails specific, so we always include the
+  # rails helpers.
+  config.include ::RSpec::Rails::RailsExampleGroup
+
+  config.before(:suite) do
+    Chewy.strategy(:bypass)
+    Chewy.massacre
+  end
 
   RSpec::Matchers.define_negated_matcher :not_eq, :eq
 end
